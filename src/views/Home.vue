@@ -1,7 +1,8 @@
 <template>
   <div class="calendar-view">
     <div class="calendar-header">
-      <h1>我的日记本</h1>
+      <h1>日记本</h1>
+      <h2 class="center-title">团团的幸福生活</h2>
       <div class="month-navigation">
         <button @click="previousMonth" class="nav-btn">&lt;</button>
         <h2>{{ currentMonthYear }}</h2>
@@ -16,16 +17,22 @@
       <div class="days-grid">
         <div 
           v-for="day in calendarDays" 
-          :key="day.date" 
-          class="day"
-          :class="{ 
+          :key="day.date"
+          :class="{
+            'day': true,
             'other-month': !day.isCurrentMonth,
             'today': isToday(day.date),
-            'has-diary': hasDiary(day.date)
+            'has-diary': hasDiary(day.date),
+            'weekend': day.dayOfWeek === 0 || day.dayOfWeek === 6,
+            'saturday': day.dayOfWeek === 6,
+            'sunday': day.dayOfWeek === 0
           }"
           @click="handleDayClick(day)"
         >
-          <div class="day-number">{{ day.dayOfMonth }}</div>
+          <div class="day-header">
+            <span class="day-number">{{ day.dayOfMonth }}</span>
+            <span class="lunar-day" v-if="day.isCurrentMonth && day.lunarInfo && day.lunarInfo.day">{{ day.lunarInfo.day }}</span>
+          </div>
           <div v-if="hasDiary(day.date)" class="diary-preview">
             <div class="diary-snippet">{{ getDiarySnippet(day.date) }}</div>
           </div>
@@ -35,18 +42,26 @@
     
     <!-- 查看日记模态框 -->
     <div v-if="selectedDayDiary && !isEditMode" class="diary-modal" @click.self="closeDiaryModal">
-      <div class="diary-content">
+      <div class="diary-form-content">
         <div class="modal-header">
-          <h3>{{ formatDate(selectedDayDiary.date) }}</h3>
+          <h3>查看日记</h3>
+          <span class="diary-date">{{ formatDate(selectedDayDiary.date) }}</span>
           <button @click="closeDiaryModal" class="close-btn">&times;</button>
         </div>
-        <div class="modal-body">
-          <div class="diary-content-text">{{ selectedDayDiary.content }}</div>
-        </div>
-        <div class="modal-actions">
-          <button @click="enterEditMode" class="edit-btn">编辑</button>
-          <button @click="deleteDiary" class="delete-btn">删除</button>
-        </div>
+        <form @submit.prevent="saveDiary">
+          <div class="form-group">
+            <textarea 
+              id="viewContent" 
+              v-model="diaryForm.content" 
+              rows="10"
+            ></textarea>
+          </div>
+          
+          <div class="form-actions">
+            <button type="submit" class="save-btn">保存</button>
+            <button type="button" @click="closeDiaryModal" class="cancel-btn">取消</button>
+          </div>
+        </form>
       </div>
     </div>
     
@@ -60,7 +75,6 @@
         </div>
         <form @submit.prevent="saveDiary" class="diary-form">
           <div class="form-group">
-            <label for="content">内容</label>
             <textarea 
               id="content" 
               v-model="diaryForm.content" 
@@ -81,7 +95,9 @@
 </template>
 
 <script>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { getDiaryByDate } from '../utils/diaryUtils'
+import { getLunarInfo } from '../utils/lunar'
 
 export default {
   name: 'Home',
@@ -99,41 +115,44 @@ export default {
     // 初始化示例日记数据
     const initSampleDiaries = () => {
       const today = new Date()
+      const year = today.getFullYear()
+      const month = today.getMonth() + 1
+      
       const sampleDiaries = [
         {
           id: '1',
-          date: new Date(today.getFullYear(), today.getMonth(), 5).toISOString().split('T')[0],
-          content: '今天天气真好，阳光明媚。公园里的花都开了，粉色的樱花特别美。和朋友们一起野餐，聊了很多有趣的话题。晚上回家时心情特别好。'
+          date: `${year}-${String(month).padStart(2, '0')}-17`,
+          content: '年初一，下午去了同庆街看灯会，在大马旁边拍了很多照片，团团半途喝酸奶不喝配方奶了；今天还巧遇了李广。'
         },
         {
           id: '2',
-          date: new Date(today.getFullYear(), today.getMonth(), 8).toISOString().split('T')[0],
-          content: '今天完成了一个重要的项目，得到了老板的表扬。同事们都为我感到高兴，一起去了庆祝晚餐。虽然很累，但是很有成就感。'
+          date: `${year}-${String(month).padStart(2, '0')}-18`,
+          content: '去了圆明园，人太多了，团团喝了酸奶也喝了配方奶；鞋子总掉。'
         },
         {
           id: '3',
-          date: new Date(today.getFullYear(), today.getMonth(), 12).toISOString().split('T')[0],
-          content: '外面下着小雨，适合在家读书。泡了一杯热茶，窝在沙发里看了一下午小说。雨声和书页翻动的声音很治愈。'
+          date: `${year}-${String(month).padStart(2, '0')}-19`,
+          content: '下午去了生命科学园的合生汇，建筑布局太乱了，没找到捞鱼的地方，差评'
         },
         {
           id: '4',
-          date: new Date(today.getFullYear(), today.getMonth(), 15).toISOString().split('T')[0],
-          content: '尝试做了新的蛋糕配方，虽然样子不太完美，但味道还不错。家人都很喜欢，下次可以再改进一下。厨房里充满了甜甜的香味。'
+          date: `${year}-${String(month).padStart(2, '0')}-20`,
+          content: '小叔一家4口来玩，团团2点多起来了不认生，不哭，只是观察。'
         },
         {
           id: '5',
-          date: new Date(today.getFullYear(), today.getMonth(), 18).toISOString().split('T')[0],
-          content: '晚上和朋友去山顶看城市夜景，灯火辉煌特别美。聊了很多关于未来的计划，感觉生活充满了希望。'
+          date: `${year}-${String(month).padStart(2, '0')}-21`,
+          content: '到清河万象汇买鞋，还是江博士的鞋好一些，方便近期学步，顺便吃了炒冰激凌。'
         },
         {
           id: '6',
-          date: new Date(today.getFullYear(), today.getMonth(), 22).toISOString().split('T')[0],
-          content: '今天坚持完成了健身计划，虽然很累但感觉很棒。流汗的感觉真的很舒服，身体也变得更有活力了。'
+          date: `${year}-${String(month).padStart(2, '0')}-22`,
+          content: '下午来了昌发展，爸妈看了《惊蛰无声》，团团看了鹦鹉兔子仓鼠，还玩了游乐场，可开心了。'
         },
         {
           id: '7',
-          date: new Date(today.getFullYear(), today.getMonth(), 25).toISOString().split('T')[0],
-          content: '周末和家人一起聚餐，妈妈做了很多好吃的菜。大家围坐在一起聊天，感觉特别温馨。这种简单的幸福最珍贵。'
+          date: `${year}-${String(month).padStart(2, '0')}-23`,
+          content: '到爸爸糖动物农场来看小动物，看到了兔子、绵羊、小马、鸡鸭鹅等，团团很爱玩沙子，人挺少，停车地方有的是。但是回去之后不好好吃饭6点直接睡了'
         }
       ]
       
@@ -168,9 +187,14 @@ export default {
       const prevMonthLastDay = new Date(year, month, 0).getDate()
       const prevMonthDays = []
       for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+        const prevMonth = month === 0 ? 12 : month
+        const prevYear = month === 0 ? year - 1 : year
+        const dateStr = `${prevYear}-${String(prevMonth).padStart(2, '0')}-${String(prevMonthLastDay - i).padStart(2, '0')}`
+        const dateObj = new Date(prevYear, prevMonth - 1, prevMonthLastDay - i)
         prevMonthDays.push({
-          date: new Date(year, month - 1, prevMonthLastDay - i).toISOString().split('T')[0],
+          date: dateStr,
           dayOfMonth: prevMonthLastDay - i,
+          dayOfWeek: dateObj.getDay(),
           isCurrentMonth: false
         })
       }
@@ -178,22 +202,31 @@ export default {
       // 获取当月所有天数
       const currentMonthDays = []
       for (let i = 1; i <= lastDay.getDate(); i++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`
+        const dateObj = new Date(year, month, i)
         currentMonthDays.push({
-          date: new Date(year, month, i).toISOString().split('T')[0],
+          date: dateStr,
           dayOfMonth: i,
-          isCurrentMonth: true
+          dayOfWeek: dateObj.getDay(),
+          isCurrentMonth: true,
+          lunarInfo: getLunarInfo(dateStr)
         })
       }
       
       // 获取下个月的前几天，填满日历
       const totalCells = prevMonthDays.length + currentMonthDays.length
-      const nextMonthDays = []
       const remainingCells = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7)
       
+      const nextMonthDays = []
       for (let i = 1; i <= remainingCells; i++) {
+        const nextMonth = month === 11 ? 1 : month + 2
+        const nextYear = month === 11 ? year + 1 : year
+        const dateStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-${String(i).padStart(2, '0')}`
+        const dateObj = new Date(nextYear, nextMonth - 1, i)
         nextMonthDays.push({
-          date: new Date(year, month + 1, i).toISOString().split('T')[0],
+          date: dateStr,
           dayOfMonth: i,
+          dayOfWeek: dateObj.getDay(),
           isCurrentMonth: false
         })
       }
@@ -203,24 +236,24 @@ export default {
     
     const isToday = (date) => {
       const today = new Date()
-      return date === today.toISOString().split('T')[0]
+      const year = today.getFullYear()
+      const month = today.getMonth() + 1
+      const day = today.getDate()
+      const todayStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      return date === todayStr
     }
     
     const hasDiary = (date) => {
       return diaries.value.some(diary => diary.date === date)
     }
     
-    const getDiaryByDate = (date) => {
-      return diaries.value.find(diary => diary.date === date)
-    }
-    
     const getDiarySnippet = (date) => {
-      const diary = getDiaryByDate(date)
+      const diary = getDiaryByDate(date, diaries.value)
       if (!diary) return ''
       
       // 获取前两行作为预览
       const lines = diary.content.split('\n').filter(line => line.trim())
-      let snippet = lines.slice(0, 2).join('\n') // 使用换行符而不是空格连接
+      let snippet = lines.slice(0, 2).join(' ')
       
       // 如果内容太长，截断并添加省略号
       if (snippet.length > 40) {
@@ -230,9 +263,9 @@ export default {
       return snippet
     }
     
-    const formatDate = (dateString) => {
+    const formatDate = (date) => {
       const options = { year: 'numeric', month: 'long', day: 'numeric' }
-      return new Date(dateString).toLocaleDateString('zh-CN', options)
+      return new Date(date).toLocaleDateString('zh-CN', options)
     }
     
     const previousMonth = () => {
@@ -245,18 +278,19 @@ export default {
     
     const handleDayClick = (day) => {
       selectedDate.value = day.date
-      const diary = getDiaryByDate(day.date)
+      const diary = getDiaryByDate(day.date, diaries.value)
       
       if (diary) {
-        // 如果有日记，显示日记内容
         selectedDayDiary.value = diary
         isEditMode.value = false
+        diaryForm.value = {
+          content: diary.content
+        }
       } else {
-        // 如果没有日记，直接进入写日记模式
         selectedDayDiary.value = null
         isEditMode.value = true
         diaryForm.value = {
-          content: ''
+          content: '\n\n\n\n\n'
         }
       }
     }
@@ -298,25 +332,22 @@ export default {
       // 保存到localStorage
       localStorage.setItem('diaries', JSON.stringify(storedDiaries))
       
-      // 更新响应式数据
-      diaries.value = [...storedDiaries]
-      
-      // 关闭弹窗
-      closeDiaryModal()
+      // 退出编辑模式
+      isEditMode.value = false
     }
     
     const deleteDiary = () => {
       if (confirm('确定要删除这篇日记吗？')) {
         // 获取当前存储的日记数据
         const storedDiaries = JSON.parse(localStorage.getItem('diaries') || '[]')
+        
+        // 删除日记
         const updatedDiaries = storedDiaries.filter(d => d.id !== selectedDayDiary.value.id)
         
         // 保存到localStorage
         localStorage.setItem('diaries', JSON.stringify(updatedDiaries))
         
-        // 更新响应式数据
-        diaries.value = [...updatedDiaries]
-        
+        // 关闭模态框
         closeDiaryModal()
       }
     }
@@ -330,8 +361,19 @@ export default {
       }
     }
     
+    const handleKeydown = (e) => {
+      if (e.key === 'Escape') {
+        closeDiaryModal()
+      }
+    }
+    
     onMounted(() => {
       initSampleDiaries()
+      window.addEventListener('keydown', handleKeydown)
+    })
+    
+    onUnmounted(() => {
+      window.removeEventListener('keydown', handleKeydown)
     })
     
     return {
@@ -347,6 +389,7 @@ export default {
       isToday,
       hasDiary,
       getDiarySnippet,
+      getLunarInfo,
       formatDate,
       previousMonth,
       nextMonth,
@@ -379,6 +422,14 @@ export default {
 .calendar-header h1 {
   color: #42b983;
   margin: 0;
+  font-size: 20px;
+}
+
+.center-title {
+  color: #2c3e50;
+  margin: 0;
+  font-size: 16px;
+  font-weight: normal;
 }
 
 .month-navigation {
@@ -395,22 +446,18 @@ export default {
 }
 
 .nav-btn {
-  background: none;
+  background: #42b983;
+  color: white;
   border: none;
-  font-size: 18px;
+  border-radius: 4px;
+  padding: 8px 12px;
   cursor: pointer;
-  color: #42b983;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  font-size: 16px;
   transition: background-color 0.3s;
 }
 
 .nav-btn:hover {
-  background-color: rgba(66, 185, 131, 0.1);
+  background-color: #369870;
 }
 
 .calendar {
@@ -423,7 +470,6 @@ export default {
 .weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  background-color: #f8f9fa;
 }
 
 .weekday {
@@ -444,48 +490,72 @@ export default {
 }
 
 .day {
-  min-height: 100px;
+  min-height: 120px;
   padding: 8px;
   border-right: 1px solid #eee;
   border-bottom: 1px solid #eee;
   cursor: pointer;
-  transition: background-color 0.3s;
-  position: relative;
-}
-
-.day:nth-child(7n) {
-  border-right: none;
-}
-
-.other-month {
-  background-color: #f8f9fa;
-  color: #bbb;
-}
-
-.today {
-  background-color: rgba(66, 185, 131, 0.1);
-}
-
-.has-diary {
-  background-color: rgba(66, 185, 131, 0.05);
+  transition: all 0.3s ease;
 }
 
 .day:hover {
-  background-color: rgba(66, 185, 131, 0.2);
+  background-color: #f9f9f9;
+}
+
+.day.other-month {
+  background-color: #f9f9f9;
+}
+
+.day.other-month:hover {
+  background-color: #f0f0f0;
+}
+
+.day-header {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 2px;
 }
 
 .day-number {
+  font-size: 18px;
   font-weight: bold;
-  margin-bottom: 5px;
   color: #2c3e50;
+}
+
+.lunar-day {
+  font-size: 11px;
+  color: #999;
+  font-weight: normal;
 }
 
 .other-month .day-number {
   color: #bbb;
 }
 
+.other-month .lunar-day {
+  color: #bbb;
+}
+
 .today .day-number {
   color: #42b983;
+}
+
+.today.has-diary::after {
+  display: none;
+}
+
+.saturday .day-number {
+  color: #e74c3c;
+}
+
+.sunday .day-number {
+  color: #e74c3c;
+  font-weight: bold;
+}
+
+.has-diary {
+  border-radius: 4px;
 }
 
 .diary-preview {
@@ -498,13 +568,22 @@ export default {
   overflow: hidden;
   text-overflow: ellipsis;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
-  white-space: pre-wrap; /* 保留换行符和空格 */
-  word-wrap: break-word; /* 允许长单词换行 */
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
-/* 模态框样式 */
+.lunar-day {
+  font-weight: bold;
+}
+
+.lunar-festival {
+  color: #e74c3c;
+  font-weight: bold;
+  margin-top: 2px;
+}
+
 .diary-modal {
   position: fixed;
   top: 0;
@@ -513,30 +592,52 @@ export default {
   height: 100%;
   background-color: rgba(0, 0, 0, 0.5);
   display: flex;
-  align-items: center;
   justify-content: center;
+  align-items: center;
   z-index: 1000;
 }
 
 .diary-content {
-  background: white;
+  background: white !important;
   border-radius: 8px;
-  width: 90%;
-  max-width: 500px;
+  width: 90% !important;
+  max-width: 600px !important;
+  min-height: 400px;
   max-height: 80vh;
   overflow: auto;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+}
+
+.diary-form-content {
+  background: white !important;
+  border-radius: 8px;
+  width: 90% !important;
+  max-width: 600px !important;
+  min-height: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+}
+
+.diary-form {
+  padding: 0 20px 20px;
 }
 
 .modal-header {
-  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
   border-bottom: 1px solid #eee;
-  position: relative;
 }
 
 .modal-header h3 {
-  margin: 0 0 5px 0;
   color: #2c3e50;
+  margin: 0;
 }
 
 .diary-date {
@@ -566,44 +667,32 @@ export default {
 }
 
 .diary-content-text {
-  white-space: pre-wrap; /* 保留换行符和空格 */
-  word-wrap: break-word; /* 允许长单词换行 */
+  white-space: pre-wrap;
+  word-wrap: break-word;
   font-family: inherit;
 }
 
 .modal-actions {
   padding: 15px 20px;
-  border-top: 1px solid #eee;
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 15px;
+  margin-top: 20px;
 }
 
-.view-btn, .edit-btn {
-  display: inline-block;
-  padding: 8px 16px;
-  text-decoration: none;
+.edit-btn {
+  background-color: #42b983;
+  color: white;
+  border: none;
   border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
   font-size: 14px;
   transition: all 0.3s;
 }
 
-.view-btn {
-  background-color: #42b983;
-  color: white;
-}
-
-.view-btn:hover {
-  background-color: #3aa876;
-}
-
-.edit-btn {
-  background-color: #3498db;
-  color: white;
-}
-
 .edit-btn:hover {
-  background-color: #2980b9;
+  background-color: #369870;
 }
 
 .delete-btn {
@@ -621,23 +710,8 @@ export default {
   background: #c0392b;
 }
 
-/* 表单样式 */
-.diary-form-content {
-  background: white;
-  border-radius: 8px;
-  width: 90%;
-  max-width: 500px;
-  max-height: 80vh;
-  overflow: auto;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-}
-
-.diary-form {
-  padding: 0 20px 20px;
-}
-
 .form-group {
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }
 
 .form-group label {
@@ -667,7 +741,9 @@ export default {
   display: flex;
   justify-content: flex-end;
   gap: 15px;
-  margin-top: 20px;
+  margin-top: auto;
+  padding-top: 5px;
+  padding-bottom: 5px;
 }
 
 .save-btn {
@@ -675,8 +751,8 @@ export default {
   color: white;
   border: none;
   border-radius: 4px;
-  padding: 10px 20px;
-  font-size: 16px;
+  padding: 8px 16px;
+  font-size: 14px;
   cursor: pointer;
   transition: background-color 0.3s;
 }
@@ -690,8 +766,8 @@ export default {
   color: #333;
   border: none;
   border-radius: 4px;
-  padding: 10px 20px;
-  font-size: 16px;
+  padding: 8px 16px;
+  font-size: 14px;
   cursor: pointer;
   transition: background-color 0.3s;
 }
@@ -703,16 +779,15 @@ export default {
 @media (max-width: 768px) {
   .calendar-header {
     flex-direction: column;
-    gap: 15px;
+    }
+    
+  .month-navigation {
+    margin-bottom: 15px;
   }
-  
+    
   .day {
-    min-height: 80px;
+    min-height: 100px;
     padding: 5px;
-  }
-  
-  .diary-preview {
-    font-size: 11px;
   }
 }
 </style>
