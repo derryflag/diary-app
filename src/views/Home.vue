@@ -3,6 +3,17 @@
     <div class="calendar-header">
       <h1>日记本</h1>
       <h2 class="center-title">团团的幸福生活</h2>
+      <div class="header-actions">
+        <button @click="handleExport" class="action-btn">导出备份</button>
+        <button @click="handleImport" class="action-btn">导入恢复</button>
+        <input
+          type="file"
+          ref="fileInput"
+          accept=".json"
+          style="display: none"
+          @change="handleFileSelect"
+        >
+      </div>
       <div class="month-navigation">
         <button @click="previousMonth" class="nav-btn">&lt;</button>
         <h2>{{ currentMonthYear }}</h2>
@@ -98,6 +109,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { getDiaryByDate } from '../utils/diaryUtils'
 import { getLunarInfo } from '../utils/lunar'
+import { dbAPI, exportToJSON, importFromJSON } from '../utils/db'
 
 export default {
   name: 'Home',
@@ -111,55 +123,51 @@ export default {
       content: ''
     })
     const weekdays = ['日', '一', '二', '三', '四', '五', '六']
+    const fileInput = ref(null)
     
-    // 初始化示例日记数据
-    const initSampleDiaries = () => {
+    const loadDiaries = async () => {
+      diaries.value = await dbAPI.getAll()
+    }
+    
+    const loadSampleDiaries = async () => {
       const today = new Date()
       const year = today.getFullYear()
       const month = today.getMonth() + 1
       
       const sampleDiaries = [
         {
-          id: '1',
           date: `${year}-${String(month).padStart(2, '0')}-17`,
           content: '年初一，下午去了同庆街看灯会，在大马旁边拍了很多照片，团团半途喝酸奶不喝配方奶了；今天还巧遇了李广。'
         },
         {
-          id: '2',
           date: `${year}-${String(month).padStart(2, '0')}-18`,
           content: '去了圆明园，人太多了，团团喝了酸奶也喝了配方奶；鞋子总掉。'
         },
         {
-          id: '3',
           date: `${year}-${String(month).padStart(2, '0')}-19`,
           content: '下午去了生命科学园的合生汇，建筑布局太乱了，没找到捞鱼的地方，差评'
         },
         {
-          id: '4',
           date: `${year}-${String(month).padStart(2, '0')}-20`,
           content: '小叔一家4口来玩，团团2点多起来了不认生，不哭，只是观察。'
         },
         {
-          id: '5',
           date: `${year}-${String(month).padStart(2, '0')}-21`,
           content: '到清河万象汇买鞋，还是江博士的鞋好一些，方便近期学步，顺便吃了炒冰激凌。'
         },
         {
-          id: '6',
           date: `${year}-${String(month).padStart(2, '0')}-22`,
           content: '下午来了昌发展，爸妈看了《惊蛰无声》，团团看了鹦鹉兔子仓鼠，还玩了游乐场，可开心了。'
         },
         {
-          id: '7',
           date: `${year}-${String(month).padStart(2, '0')}-23`,
           content: '到爸爸糖动物农场来看小动物，看到了兔子、绵羊、小马、鸡鸭鹅等，团团很爱玩沙子，人挺少，停车地方有的是。但是回去之后不好好吃饭6点直接睡了'
         }
       ]
       
-      // 检查是否已有日记数据，如果没有则使用示例数据
-      const existingDiaries = JSON.parse(localStorage.getItem('diaries') || '[]')
+      const existingDiaries = await dbAPI.getAll()
       if (existingDiaries.length === 0) {
-        localStorage.setItem('diaries', JSON.stringify(sampleDiaries))
+        await dbAPI.bulkPut(sampleDiaries)
         diaries.value = sampleDiaries
       } else {
         diaries.value = existingDiaries
@@ -304,51 +312,34 @@ export default {
       isEditMode.value = true
     }
     
-    const saveDiary = () => {
-      // 获取当前存储的日记数据
-      const storedDiaries = JSON.parse(localStorage.getItem('diaries') || '[]')
-      
+    const saveDiary = async () => {
       if (selectedDayDiary.value) {
-        // 编辑现有日记
-        const diaryIndex = storedDiaries.findIndex(d => d.id === selectedDayDiary.value.id)
-        if (diaryIndex !== -1) {
-          storedDiaries[diaryIndex] = {
-            ...storedDiaries[diaryIndex],
-            content: diaryForm.value.content
-          }
-          selectedDayDiary.value = storedDiaries[diaryIndex]
+        const updatedDiary = {
+          ...selectedDayDiary.value,
+          content: diaryForm.value.content
         }
+        await dbAPI.add(updatedDiary)
+        selectedDayDiary.value = updatedDiary
       } else {
-        // 创建新日记
         const newDiary = {
           id: Date.now().toString(),
           date: selectedDate.value,
           content: diaryForm.value.content
         }
-        storedDiaries.push(newDiary)
+        await dbAPI.add(newDiary)
         selectedDayDiary.value = newDiary
       }
-      
-      // 保存到localStorage
-      localStorage.setItem('diaries', JSON.stringify(storedDiaries))
-      
-      // 退出编辑模式
+
       isEditMode.value = false
+      await loadDiaries()
     }
     
     const deleteDiary = () => {
       if (confirm('确定要删除这篇日记吗？')) {
-        // 获取当前存储的日记数据
-        const storedDiaries = JSON.parse(localStorage.getItem('diaries') || '[]')
-        
-        // 删除日记
-        const updatedDiaries = storedDiaries.filter(d => d.id !== selectedDayDiary.value.id)
-        
-        // 保存到localStorage
-        localStorage.setItem('diaries', JSON.stringify(updatedDiaries))
-        
-        // 关闭模态框
-        closeDiaryModal()
+        dbAPI.delete(selectedDayDiary.value.date).then(() => {
+          closeDiaryModal()
+          loadDiaries()
+        })
       }
     }
     
@@ -361,6 +352,31 @@ export default {
       }
     }
     
+    const handleExport = () => {
+      exportToJSON(diaries.value)
+    }
+    
+    const handleImport = () => {
+      fileInput.value.click()
+    }
+    
+    const handleFileSelect = async (event) => {
+      const file = event.target.files[0]
+      if (!file) return
+      
+      try {
+        const importedDiaries = await importFromJSON(file)
+        await dbAPI.clear()
+        await dbAPI.bulkPut(importedDiaries)
+        await loadDiaries()
+        alert('导入成功！')
+      } catch (error) {
+        alert('导入失败：' + error.message)
+      }
+      
+      event.target.value = ''
+    }
+    
     const handleKeydown = (e) => {
       if (e.key === 'Escape') {
         closeDiaryModal()
@@ -368,7 +384,7 @@ export default {
     }
     
     onMounted(() => {
-      initSampleDiaries()
+      loadSampleDiaries()
       window.addEventListener('keydown', handleKeydown)
     })
     
@@ -386,6 +402,7 @@ export default {
       selectedDate,
       isEditMode,
       diaryForm,
+      fileInput,
       isToday,
       hasDiary,
       getDiarySnippet,
@@ -397,7 +414,10 @@ export default {
       enterEditMode,
       saveDiary,
       deleteDiary,
-      closeDiaryModal
+      closeDiaryModal,
+      handleExport,
+      handleImport,
+      handleFileSelect
     }
   }
 }
@@ -412,11 +432,32 @@ export default {
 
 .calendar-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 30px;
   padding-bottom: 15px;
   border-bottom: 1px solid #eee;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.action-btn {
+  background: #3498db;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background-color 0.3s;
+}
+
+.action-btn:hover {
+  background-color: #2980b9;
 }
 
 .calendar-header h1 {
