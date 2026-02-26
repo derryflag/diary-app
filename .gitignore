@@ -86,7 +86,6 @@ out
 
 # Nuxt.js build / generate output
 .nuxt
-dist
 
 # Gatsby files
 .cache/
@@ -137,7 +136,6 @@ dist
 Thumbs.db
 
 # Build output
-dist/
 build/
 
 # Local env files
