@@ -114,7 +114,7 @@ import { dbAPI, exportToJSON, importFromJSON } from '../utils/db'
 export default {
   name: 'Home',
   setup() {
-    const currentDate = ref(new Date(2026, 1))
+    const currentDate = ref(new Date())
     const diaries = ref([])
     const selectedDayDiary = ref(null)
     const selectedDate = ref(null)
@@ -127,50 +127,6 @@ export default {
     
     const loadDiaries = async () => {
       diaries.value = await dbAPI.getAll()
-    }
-    
-    const loadSampleDiaries = async () => {
-      const year = 2026
-      const month = 2
-      
-      const sampleDiaries = [
-        {
-          date: `${year}-${String(month).padStart(2, '0')}-17`,
-          content: '年初一，下午去了同庆街看灯会，在大马旁边拍了很多照片，团团半途喝酸奶不喝配方奶了；今天还巧遇了李广。'
-        },
-        {
-          date: `${year}-${String(month).padStart(2, '0')}-18`,
-          content: '去了圆明园，人太多了，团团喝了酸奶也喝了配方奶；鞋子总掉。'
-        },
-        {
-          date: `${year}-${String(month).padStart(2, '0')}-19`,
-          content: '下午去了生命科学园的合生汇，建筑布局太乱了，没找到捞鱼的地方，差评'
-        },
-        {
-          date: `${year}-${String(month).padStart(2, '0')}-20`,
-          content: '小叔一家4口来玩，团团2点多起来了不认生，不哭，只是观察。'
-        },
-        {
-          date: `${year}-${String(month).padStart(2, '0')}-21`,
-          content: '到清河万象汇买鞋，还是江博士的鞋好一些，方便近期学步，顺便吃了炒冰激凌。'
-        },
-        {
-          date: `${year}-${String(month).padStart(2, '0')}-22`,
-          content: '下午来了昌发展，爸妈看了《惊蛰无声》，团团看了鹦鹉兔子仓鼠，还玩了游乐场，可开心了。'
-        },
-        {
-          date: `${year}-${String(month).padStart(2, '0')}-23`,
-          content: '到爸爸糖动物农场来看小动物，看到了兔子、绵羊、小马、鸡鸭鹅等，团团很爱玩沙子，人挺少，停车地方有的是。但是回去之后不好好吃饭6点直接睡了'
-        }
-      ]
-      
-      const existingDiaries = await dbAPI.getAll()
-      if (existingDiaries.length === 0) {
-        await dbAPI.bulkPut(sampleDiaries)
-        diaries.value = sampleDiaries
-      } else {
-        diaries.value = existingDiaries
-      }
     }
     
     const currentMonthYear = computed(() => {
@@ -382,7 +338,7 @@ export default {
     }
     
     onMounted(() => {
-      loadSampleDiaries()
+      loadDiaries()
       window.addEventListener('keydown', handleKeydown)
     })
     

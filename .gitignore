@@ -138,6 +138,9 @@ Thumbs.db
 # Build output
 build/
 
+# Data files (not tracked by git)
+server/data/
+
 # Local env files
 .env.local
 .env.*.local
