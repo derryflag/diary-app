@@ -1,123 +1,51 @@
-const DB_NAME = 'diary-app'
-const DB_VERSION = 2
-const STORE_NAME = 'diaries'
+const isDev = import.meta.env.DEV
+const API_BASE = isDev ? 'http://localhost:3000' : ''
 
-let db = null
+const readDiariesFromServer = async () => {
+  const res = await fetch(`${API_BASE}/api/diaries`)
+  return await res.json()
+}
 
-const openDB = () => {
-  return new Promise((resolve, reject) => {
-    if (db) {
-      resolve(db)
-      return
-    }
-
-    const request = indexedDB.open(DB_NAME, DB_VERSION)
-
-    request.onerror = () => {
-      reject(request.error)
-    }
-
-    request.onsuccess = () => {
-      db = request.result
-      resolve(db)
-    }
-
-    request.onupgradeneeded = (event) => {
-      const database = event.target.result
-      if (!database.objectStoreNames.contains(STORE_NAME)) {
-        database.createObjectStore(STORE_NAME, { keyPath: 'date' })
-      }
-    }
+const saveDiaryToServer = async (diary) => {
+  const res = await fetch(`${API_BASE}/api/diaries`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(diary)
   })
+  return await res.json()
+}
+
+const deleteDiaryFromServer = async (date) => {
+  const res = await fetch(`${API_BASE}/api/diaries/${date}`, {
+    method: 'DELETE'
+  })
+  return await res.json()
 }
 
 export const dbAPI = {
   async getAll() {
-    const database = await openDB()
-    return new Promise((resolve, reject) => {
-      const transaction = database.transaction(STORE_NAME, 'readonly')
-      const store = transaction.objectStore(STORE_NAME)
-      const request = store.getAll()
-
-      request.onsuccess = () => {
-        resolve(request.result || [])
-      }
-
-      request.onerror = () => {
-        reject(request.error)
-      }
-    })
+    return await readDiariesFromServer()
   },
 
   async add(diary) {
-    const database = await openDB()
-    return new Promise((resolve, reject) => {
-      const transaction = database.transaction(STORE_NAME, 'readwrite')
-      const store = transaction.objectStore(STORE_NAME)
-      const request = store.put(diary)
-
-      request.onsuccess = () => {
-        resolve(diary)
-      }
-
-      request.onerror = () => {
-        reject(request.error)
-      }
-    })
+    return await saveDiaryToServer(diary)
   },
 
   async delete(date) {
-    const database = await openDB()
-    return new Promise((resolve, reject) => {
-      const transaction = database.transaction(STORE_NAME, 'readwrite')
-      const store = transaction.objectStore(STORE_NAME)
-      const request = store.delete(date)
-
-      request.onsuccess = () => {
-        resolve()
-      }
-
-      request.onerror = () => {
-        reject(request.error)
-      }
-    })
+    return await deleteDiaryFromServer(date)
   },
 
   async clear() {
-    const database = await openDB()
-    return new Promise((resolve, reject) => {
-      const transaction = database.transaction(STORE_NAME, 'readwrite')
-      const store = transaction.objectStore(STORE_NAME)
-      const request = store.clear()
-
-      request.onsuccess = () => {
-        resolve()
-      }
-
-      request.onerror = () => {
-        reject(request.error)
-      }
-    })
+    const diaries = await readDiariesFromServer()
+    for (const diary of diaries) {
+      await deleteDiaryFromServer(diary.date)
+    }
   },
 
   async bulkPut(diaries) {
-    const database = await openDB()
-    return new Promise((resolve, reject) => {
-      const transaction = database.transaction(STORE_NAME, 'readwrite')
-      const store = transaction.objectStore(STORE_NAME)
-
-      diaries.forEach(diary => {
-        store.put(diary)
-      })
-
-      transaction.oncomplete = () => {
-        resolve()
-      }
-
-      transaction.onerror = () => {
-        reject(transaction.error)
-      }
-    })
+    for (const diary of diaries) {
+      await saveDiaryToServer(diary)
+    }
   }
 }
 

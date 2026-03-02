@@ -26,4 +26,12 @@ export default {
 main {
   min-height: 100vh;
 }
+
+@media (max-width: 768px) {
+  #app {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+}
 </style>

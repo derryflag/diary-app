@@ -114,7 +114,7 @@ import { dbAPI, exportToJSON, importFromJSON } from '../utils/db'
 export default {
   name: 'Home',
   setup() {
-    const currentDate = ref(new Date())
+    const currentDate = ref(new Date(2026, 1))
     const diaries = ref([])
     const selectedDayDiary = ref(null)
     const selectedDate = ref(null)
@@ -130,9 +130,8 @@ export default {
     }
     
     const loadSampleDiaries = async () => {
-      const today = new Date()
-      const year = today.getFullYear()
-      const month = today.getMonth() + 1
+      const year = 2026
+      const month = 2
       
       const sampleDiaries = [
         {
@@ -322,7 +321,6 @@ export default {
         selectedDayDiary.value = updatedDiary
       } else {
         const newDiary = {
-          id: Date.now().toString(),
           date: selectedDate.value,
           content: diaryForm.value.content
         }
@@ -330,7 +328,7 @@ export default {
         selectedDayDiary.value = newDiary
       }
 
-      isEditMode.value = false
+      closeDiaryModal()
       await loadDiaries()
     }
     
@@ -818,17 +816,92 @@ export default {
 }
 
 @media (max-width: 768px) {
+  .calendar-view {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+  
   .calendar-header {
     flex-direction: column;
-    }
-    
-  .month-navigation {
-    margin-bottom: 15px;
+    gap: 10px;
+    padding: 10px;
+    margin-bottom: 10px;
   }
-    
+  
+  .header-actions {
+    order: -1;
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .action-btn {
+    padding: 8px 16px;
+    font-size: 14px;
+    flex: 1;
+  }
+  
+  .month-navigation {
+    margin-bottom: 10px;
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .calendar {
+    border-radius: 0;
+  }
+  
+  .weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+  }
+  
+  .weekday {
+    padding: 8px 0;
+    font-size: 12px;
+  }
+  
   .day {
-    min-height: 100px;
-    padding: 5px;
+    min-height: 80px;
+    padding: 4px;
+  }
+  
+  .day-number {
+    font-size: 14px;
+  }
+  
+  .lunar-day {
+    font-size: 9px;
+  }
+  
+  .diary-preview {
+    display: none;
+  }
+  
+  .has-diary .diary-preview {
+    display: block;
+    font-size: 10px;
+  }
+  
+  .diary-snippet {
+    -webkit-line-clamp: 2;
+  }
+  
+  .diary-modal {
+    padding: 0;
+  }
+  
+  .diary-form-content {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+  
+  .form-group textarea {
+    min-height: 150px;
+    font-size: 14px;
   }
 }
 </style>
