@@ -3,25 +3,19 @@
     <div class="calendar-header">
       <h1>日记本</h1>
       <h2 class="center-title">团团的幸福生活</h2>
-      <div class="header-actions">
-        <button @click="handleExport" class="action-btn">导出备份</button>
-        <button @click="handleImport" class="action-btn">导入恢复</button>
-        <input
-          type="file"
-          ref="fileInput"
-          accept=".json"
-          style="display: none"
-          @change="handleFileSelect"
-        >
+      <div class="view-toggle">
+        <button @click="viewMode = 'week'" :class="{ active: viewMode === 'week' }">周视图</button>
+        <button @click="viewMode = 'month'" :class="{ active: viewMode === 'month' }">月视图</button>
       </div>
       <div class="month-navigation">
-        <button @click="previousMonth" class="nav-btn">&lt;</button>
-        <h2>{{ currentMonthYear }}</h2>
-        <button @click="nextMonth" class="nav-btn">&gt;</button>
+        <button @click="viewMode === 'month' ? previousMonth() : previousWeek()" class="nav-btn">&lt;</button>
+        <h2>{{ viewMode === 'month' ? currentMonthYear : currentWeekRange }}</h2>
+        <button @click="viewMode === 'month' ? nextMonth() : nextWeek()" class="nav-btn">&gt;</button>
       </div>
     </div>
     
-    <div class="calendar">
+    <!-- 月视图 -->
+    <div v-if="viewMode === 'month'" class="calendar">
       <div class="weekdays">
         <div v-for="day in weekdays" :key="day" class="weekday">{{ day }}</div>
       </div>
@@ -46,6 +40,32 @@
           </div>
           <div v-if="hasDiary(day.date)" class="diary-preview">
             <div class="diary-snippet">{{ getDiarySnippet(day.date) }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- 周视图 -->
+    <div v-else class="week-view">
+      <div class="week-grid">
+        <div 
+          v-for="day in weekDays" 
+          :key="day.date"
+          :class="{
+            'week-day': true,
+            'today': isToday(day.date),
+            'has-diary': hasDiary(day.date),
+            'weekend': day.dayOfWeek === 0 || day.dayOfWeek === 6
+          }"
+          @click="handleDayClick(day)"
+        >
+          <div class="week-day-header">
+            <span class="week-day-name">{{ weekdaysFull[day.dayOfWeek] }}</span>
+            <span class="week-day-number">{{ day.dayOfMonth }}</span>
+            <span class="lunar-day" v-if="day.lunarInfo && day.lunarInfo.day">{{ day.lunarInfo.day }}</span>
+          </div>
+          <div v-if="hasDiary(day.date)" class="week-diary-content">
+            {{ getDiaryContent(day.date) }}
           </div>
         </div>
       </div>
@@ -102,6 +122,10 @@
         </form>
       </div>
     </div>
+    
+    <div class="footer-actions">
+      <button @click="handleExport" class="action-btn">导出备份</button>
+    </div>
   </div>
 </template>
 
@@ -109,12 +133,13 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { getDiaryByDate } from '../utils/diaryUtils'
 import { getLunarInfo } from '../utils/lunar'
-import { dbAPI, exportToJSON, importFromJSON } from '../utils/db'
+import { dbAPI, exportToJSON } from '../utils/db'
 
 export default {
   name: 'Home',
   setup() {
     const currentDate = ref(new Date())
+    const viewMode = ref('week')
     const diaries = ref([])
     const selectedDayDiary = ref(null)
     const selectedDate = ref(null)
@@ -123,7 +148,7 @@ export default {
       content: ''
     })
     const weekdays = ['日', '一', '二', '三', '四', '五', '六']
-    const fileInput = ref(null)
+    const weekdaysFull = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
     
     const loadDiaries = async () => {
       diaries.value = await dbAPI.getAll()
@@ -197,6 +222,53 @@ export default {
       return [...prevMonthDays, ...currentMonthDays, ...nextMonthDays]
     })
     
+    const currentWeekRange = computed(() => {
+      const year = currentDate.value.getFullYear()
+      const month = currentDate.value.getMonth()
+      const date = currentDate.value.getDate()
+      const dayOfWeek = new Date(year, month, date).getDay()
+      
+      const startDate = new Date(year, month, date - dayOfWeek)
+      const endDate = new Date(year, month, date + (6 - dayOfWeek))
+      
+      const startMonth = startDate.getMonth() + 1
+      const endMonth = endDate.getMonth() + 1
+      
+      if (startMonth === endMonth) {
+        return `${startDate.getMonth() + 1}月${startDate.getDate()}日 - ${endDate.getDate()}日`
+      } else {
+        return `${startDate.getMonth() + 1}月${startDate.getDate()}日 - ${endDate.getMonth() + 1}月${endDate.getDate()}日`
+      }
+    })
+    
+    const weekDays = computed(() => {
+      const year = currentDate.value.getFullYear()
+      const month = currentDate.value.getMonth()
+      const date = currentDate.value.getDate()
+      const dayOfWeek = new Date(year, month, date).getDay()
+      
+      const days = []
+      for (let i = -dayOfWeek; i < 7 - dayOfWeek; i++) {
+        const d = new Date(year, month, date + i)
+        const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        days.push({
+          date: dateStr,
+          dayOfMonth: d.getDate(),
+          dayOfWeek: d.getDay(),
+          lunarInfo: getLunarInfo(dateStr)
+        })
+      }
+      return days
+    })
+    
+    const previousWeek = () => {
+      currentDate.value = new Date(currentDate.value.getTime() - 7 * 24 * 60 * 60 * 1000)
+    }
+    
+    const nextWeek = () => {
+      currentDate.value = new Date(currentDate.value.getTime() + 7 * 24 * 60 * 60 * 1000)
+    }
+    
     const isToday = (date) => {
       const today = new Date()
       const year = today.getFullYear()
@@ -214,16 +286,20 @@ export default {
       const diary = getDiaryByDate(date, diaries.value)
       if (!diary) return ''
       
-      // 获取前两行作为预览
       const lines = diary.content.split('\n').filter(line => line.trim())
       let snippet = lines.slice(0, 2).join(' ')
       
-      // 如果内容太长，截断并添加省略号
       if (snippet.length > 40) {
         snippet = snippet.substring(0, 40) + '...'
       }
       
       return snippet
+    }
+    
+    const getDiaryContent = (date) => {
+      const diary = getDiaryByDate(date, diaries.value)
+      if (!diary) return ''
+      return diary.content
     }
     
     const formatDate = (date) => {
@@ -310,27 +386,6 @@ export default {
       exportToJSON(diaries.value)
     }
     
-    const handleImport = () => {
-      fileInput.value.click()
-    }
-    
-    const handleFileSelect = async (event) => {
-      const file = event.target.files[0]
-      if (!file) return
-      
-      try {
-        const importedDiaries = await importFromJSON(file)
-        await dbAPI.clear()
-        await dbAPI.bulkPut(importedDiaries)
-        await loadDiaries()
-        alert('导入成功！')
-      } catch (error) {
-        alert('导入失败：' + error.message)
-      }
-      
-      event.target.value = ''
-    }
-    
     const handleKeydown = (e) => {
       if (e.key === 'Escape') {
         closeDiaryModal()
@@ -348,30 +403,34 @@ export default {
     
     return {
       currentDate,
+      viewMode,
       currentMonthYear,
+      currentWeekRange,
       calendarDays,
+      weekDays,
       weekdays,
+      weekdaysFull,
       diaries,
       selectedDayDiary,
       selectedDate,
       isEditMode,
       diaryForm,
-      fileInput,
       isToday,
       hasDiary,
       getDiarySnippet,
+      getDiaryContent,
       getLunarInfo,
       formatDate,
       previousMonth,
       nextMonth,
+      previousWeek,
+      nextWeek,
       handleDayClick,
       enterEditMode,
       saveDiary,
       deleteDiary,
       closeDiaryModal,
-      handleExport,
-      handleImport,
-      handleFileSelect
+      handleExport
     }
   }
 }
@@ -384,6 +443,13 @@ export default {
   padding: 20px;
 }
 
+.footer-actions {
+  margin-top: 30px;
+  text-align: center;
+  padding-top: 20px;
+  border-top: 1px solid #eee;
+}
+
 .calendar-header {
   display: flex;
   flex-wrap: wrap;
@@ -394,9 +460,31 @@ export default {
   border-bottom: 1px solid #eee;
 }
 
-.header-actions {
+.view-toggle {
   display: flex;
-  gap: 10px;
+  gap: 5px;
+}
+
+.view-toggle button {
+  background: #f0f0f0;
+  border: none;
+  padding: 6px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  border-radius: 4px;
+}
+
+.view-toggle button.active {
+  background: #42b983;
+  color: white;
+}
+
+.view-toggle button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.view-toggle button:last-child {
+  border-radius: 0 4px 4px 0;
 }
 
 .action-btn {
@@ -491,10 +579,17 @@ export default {
   border-bottom: 1px solid #eee;
   cursor: pointer;
   transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
 }
 
 .day:hover {
   background-color: #f9f9f9;
+}
+
+.day .diary-empty {
+  margin-top: auto;
+  padding-top: 10px;
 }
 
 .day.other-month {
@@ -627,6 +722,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 15px 20px;
+  padding-right: 40px;
   border-bottom: 1px solid #eee;
 }
 
@@ -785,12 +881,6 @@ export default {
     margin-bottom: 10px;
   }
   
-  .header-actions {
-    order: -1;
-    width: 100%;
-    justify-content: center;
-  }
-  
   .action-btn {
     padding: 8px 16px;
     font-size: 14px;
@@ -805,6 +895,11 @@ export default {
   
   .calendar {
     border-radius: 0;
+  }
+  
+  .footer-actions {
+    padding: 15px;
+    text-align: center;
   }
   
   .weekdays {
@@ -858,6 +953,144 @@ export default {
   .form-group textarea {
     min-height: 150px;
     font-size: 14px;
+  }
+}
+
+.week-view {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.week-day {
+  min-height: 200px;
+  padding: 10px;
+  border-right: 1px solid #eee;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  background: white;
+}
+
+.week-day:last-child {
+  border-right: none;
+}
+
+.week-day:hover {
+  background-color: #f9f9f9;
+}
+
+.week-day.today .week-day-number {
+  color: #42b983;
+}
+
+.week-day.weekend .week-day-number {
+  color: #e74c3c;
+}
+
+.week-day-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.week-day-name {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 4px;
+}
+
+.week-day-number {
+  font-size: 24px;
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.week-day .lunar-day {
+  font-size: 11px;
+  color: #999;
+  margin-top: 2px;
+}
+
+.week-diary-content {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #333;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-y: auto;
+  max-height: 140px;
+}
+
+.diary-empty {
+  font-size: 12px;
+  color: #ccc;
+  text-align: center;
+  padding-top: 20px;
+}
+
+@media (max-width: 768px) {
+  .week-view {
+    border-radius: 0;
+  }
+  
+  .week-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .week-day {
+    min-height: auto;
+    padding: 8px 10px;
+    border-right: none;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    gap: 10px;
+  }
+  
+  .week-day:last-child {
+    border-bottom: none;
+  }
+  
+  .week-day-header {
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 0;
+    min-width: 40px;
+  }
+  
+  .week-day-name {
+    font-size: 10px;
+  }
+  
+  .week-day-number {
+    font-size: 18px;
+  }
+  
+  .week-day .lunar-day {
+    margin-top: 0;
+    font-size: 9px;
+  }
+  
+  .week-diary-content {
+    flex: 1 !important;
+    font-size: 12px !important;
+    max-height: 3.5em !important;
+    overflow: hidden !important;
+  }
+  
+  .diary-empty {
+    flex: 1;
+    font-size: 11px;
+    padding-top: 0;
+    text-align: left;
+    align-self: center;
   }
 }
 </style>
