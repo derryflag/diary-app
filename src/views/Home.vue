@@ -447,7 +447,7 @@ export default {
   margin-top: 30px;
   text-align: center;
   padding-top: 20px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid #e8e8e8;
 }
 
 .calendar-header {
@@ -456,8 +456,8 @@ export default {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 30px;
-  padding-bottom: 15px;
-  border-bottom: 1px solid #eee;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #f0f0f0;
 }
 
 .view-toggle {
@@ -466,52 +466,60 @@ export default {
 }
 
 .view-toggle button {
-  background: #f0f0f0;
-  border: none;
+  background: #f8f8f8;
+  border: 1px solid #e0e0e0;
   padding: 6px 16px;
   cursor: pointer;
   font-size: 14px;
-  border-radius: 4px;
+  border-radius: 6px;
+  transition: all 0.3s;
+  color: #666;
 }
 
 .view-toggle button.active {
-  background: #42b983;
+  background: linear-gradient(135deg, #85c285, #5b9bd5);
   color: white;
+  border-color: transparent;
 }
 
 .view-toggle button:first-child {
-  border-radius: 4px 0 0 4px;
+  border-radius: 6px 0 0 6px;
 }
 
 .view-toggle button:last-child {
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 6px 6px 0;
 }
 
 .action-btn {
-  background: #3498db;
+  background: linear-gradient(135deg, #ffb347, #ff9500);
   color: white;
   border: none;
-  border-radius: 4px;
-  padding: 6px 12px;
+  border-radius: 6px;
+  padding: 8px 16px;
   cursor: pointer;
   font-size: 13px;
-  transition: background-color 0.3s;
+  transition: all 0.3s;
 }
 
 .action-btn:hover {
-  background-color: #2980b9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 179, 71, 0.4);
 }
 
 .calendar-header h1 {
-  color: #42b983;
+  background: linear-gradient(135deg, #85c285, #5b9bd5);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   margin: 0;
-  font-size: 20px;
+  font-size: 22px;
+  font-weight: 600;
 }
 
 .center-title {
-  color: #2c3e50;
+  color: #888;
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: normal;
 }
 
@@ -522,32 +530,35 @@ export default {
 }
 
 .month-navigation h2 {
-  color: #2c3e50;
+  color: #555;
   margin: 0;
-  min-width: 120px;
+  min-width: 140px;
   text-align: center;
+  font-weight: 500;
 }
 
 .nav-btn {
-  background: #42b983;
+  background: linear-gradient(135deg, #85c285, #6bb36b);
   color: white;
   border: none;
-  border-radius: 4px;
-  padding: 8px 12px;
+  border-radius: 6px;
+  padding: 8px 14px;
   cursor: pointer;
   font-size: 16px;
-  transition: background-color 0.3s;
+  transition: all 0.3s;
 }
 
 .nav-btn:hover {
-  background-color: #369870;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(133, 194, 133, 0.4);
 }
 
 .calendar {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  background: linear-gradient(90deg, #ffffff 0%, #f0f8ff 50%, #e6f2ff 100%);
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(91, 155, 213, 0.15);
   overflow: hidden;
+  border: 1px solid rgba(91, 155, 213, 0.15);
 }
 
 .weekdays {
@@ -558,9 +569,9 @@ export default {
 .weekday {
   padding: 15px 0;
   text-align: center;
-  font-weight: bold;
-  color: #2c3e50;
-  border-right: 1px solid #eee;
+  font-weight: 600;
+  color: #555;
+  border-right: 1px solid #f0f0f0;
 }
 
 .weekday:last-child {
@@ -574,9 +585,9 @@ export default {
 
 .day {
   min-height: 120px;
-  padding: 8px;
-  border-right: 1px solid #eee;
-  border-bottom: 1px solid #eee;
+  padding: 10px;
+  border-right: 1px solid #f5f5f5;
+  border-bottom: 1px solid #f5f5f5;
   cursor: pointer;
   transition: all 0.3s ease;
   display: flex;
@@ -584,7 +595,9 @@ export default {
 }
 
 .day:hover {
-  background-color: #f9f9f9;
+  background-color: #fafafa;
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .day .diary-empty {
@@ -593,24 +606,24 @@ export default {
 }
 
 .day.other-month {
-  background-color: #f9f9f9;
+  background-color: #fafafa;
 }
 
 .day.other-month:hover {
-  background-color: #f0f0f0;
+  background-color: #f5f5f5;
 }
 
 .day-header {
   display: flex;
   align-items: baseline;
   gap: 4px;
-  margin-bottom: 2px;
+  margin-bottom: 4px;
 }
 
 .day-number {
   font-size: 18px;
-  font-weight: bold;
-  color: #2c3e50;
+  font-weight: 600;
+  color: #444;
 }
 
 .lunar-day {
@@ -620,15 +633,15 @@ export default {
 }
 
 .other-month .day-number {
-  color: #bbb;
+  color: #ccc;
 }
 
 .other-month .lunar-day {
-  color: #bbb;
+  color: #ccc;
 }
 
 .today .day-number {
-  color: #42b983;
+  color: #5b9bd5;
 }
 
 .today.has-diary::after {
@@ -636,22 +649,22 @@ export default {
 }
 
 .saturday .day-number {
-  color: #e74c3c;
+  color: #ff6b6b;
 }
 
 .sunday .day-number {
-  color: #e74c3c;
+  color: #ff6b6b;
   font-weight: bold;
 }
 
 .has-diary {
-  border-radius: 4px;
+  border-radius: 8px;
 }
 
 .diary-preview {
   font-size: 12px;
   color: #666;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .diary-snippet {
@@ -665,11 +678,11 @@ export default {
 }
 
 .lunar-day {
-  font-weight: bold;
+  font-weight: 500;
 }
 
 .lunar-festival {
-  color: #e74c3c;
+  color: #ff6b6b;
   font-weight: bold;
   margin-top: 2px;
 }
@@ -680,35 +693,36 @@ export default {
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(0, 0, 0, 0.4);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 1000;
+  backdrop-filter: blur(4px);
 }
 
 .diary-content {
   background: white !important;
-  border-radius: 8px;
+  border-radius: 16px;
   width: 90% !important;
   max-width: 600px !important;
   min-height: 400px;
   max-height: 80vh;
   overflow: auto;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
 }
 
 .diary-form-content {
   background: white !important;
-  border-radius: 8px;
+  border-radius: 16px;
   width: 90% !important;
   max-width: 600px !important;
   min-height: 400px;
   max-height: 80vh;
   overflow-y: auto;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
 }
@@ -721,14 +735,15 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px 20px;
-  padding-right: 40px;
-  border-bottom: 1px solid #eee;
+  padding: 20px 24px;
+  padding-right: 50px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .modal-header h3 {
-  color: #2c3e50;
+  color: #444;
   margin: 0;
+  font-weight: 600;
 }
 
 .diary-date {
@@ -745,10 +760,11 @@ export default {
   font-size: 24px;
   cursor: pointer;
   color: #999;
+  transition: color 0.3s;
 }
 
 .close-btn:hover {
-  color: #666;
+  color: #5b9bd5;
 }
 
 .modal-body {
@@ -772,10 +788,10 @@ export default {
 }
 
 .edit-btn {
-  background-color: #42b983;
+  background: linear-gradient(135deg, #85c285, #6bb36b);
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 8px 16px;
   cursor: pointer;
   font-size: 14px;
@@ -783,14 +799,15 @@ export default {
 }
 
 .edit-btn:hover {
-  background-color: #369870;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(133, 194, 133, 0.4);
 }
 
 .delete-btn {
-  background: #e74c3c;
+  background: linear-gradient(135deg, #ff6b6b, #ee5a5a);
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 8px 16px;
   cursor: pointer;
   font-size: 14px;
@@ -798,7 +815,8 @@ export default {
 }
 
 .delete-btn:hover {
-  background: #c0392b;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
 }
 
 .form-group {
@@ -808,19 +826,27 @@ export default {
 .form-group label {
   display: block;
   margin-bottom: 8px;
-  font-weight: bold;
-  color: #2c3e50;
+  font-weight: 600;
+  color: #444;
 }
 
 .form-group input,
 .form-group textarea {
   width: 100%;
   padding: 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
   font-size: 16px;
   font-family: inherit;
   box-sizing: border-box;
+  transition: border-color 0.3s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #5b9bd5;
+  box-shadow: 0 0 0 3px rgba(91, 155, 213, 0.1);
 }
 
 .form-group textarea {
@@ -838,29 +864,30 @@ export default {
 }
 
 .save-btn {
-  background-color: #42b983;
+  background: linear-gradient(135deg, #85c285, #6bb36b);
   color: white;
   border: none;
-  border-radius: 4px;
-  padding: 8px 16px;
+  border-radius: 6px;
+  padding: 10px 20px;
   font-size: 14px;
   cursor: pointer;
-  transition: background-color 0.3s;
+  transition: all 0.3s;
 }
 
 .save-btn:hover {
-  background-color: #3aa876;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(133, 194, 133, 0.4);
 }
 
 .cancel-btn {
-  background-color: #f0f0f0;
-  color: #333;
-  border: none;
-  border-radius: 4px;
-  padding: 8px 16px;
+  background-color: #f5f5f5;
+  color: #666;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 10px 20px;
   font-size: 14px;
   cursor: pointer;
-  transition: background-color 0.3s;
+  transition: all 0.3s;
 }
 
 .cancel-btn:hover {
@@ -957,10 +984,11 @@ export default {
 }
 
 .week-view {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  background: linear-gradient(90deg, #ffffff 0%, #f0f8ff 50%, #e6f2ff 100%);
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(91, 155, 213, 0.15);
   overflow: hidden;
+  border: 1px solid rgba(91, 155, 213, 0.15);
 }
 
 .week-grid {
@@ -971,11 +999,11 @@ export default {
 .week-day {
   min-height: 200px;
   padding: 10px;
-  border-right: 1px solid #eee;
-  border-bottom: 1px solid #eee;
+  border-right: 1px solid rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   cursor: pointer;
-  transition: background-color 0.3s;
-  background: white;
+  transition: all 0.3s;
+  background: transparent;
 }
 
 .week-day:last-child {
@@ -983,15 +1011,15 @@ export default {
 }
 
 .week-day:hover {
-  background-color: #f9f9f9;
+  background-color: #fafafa;
 }
 
 .week-day.today .week-day-number {
-  color: #42b983;
+  color: #5b9bd5;
 }
 
 .week-day.weekend .week-day-number {
-  color: #e74c3c;
+  color: #ff6b6b;
 }
 
 .week-day-header {
@@ -1009,8 +1037,8 @@ export default {
 
 .week-day-number {
   font-size: 24px;
-  font-weight: bold;
-  color: #2c3e50;
+  font-weight: 600;
+  color: #444;
 }
 
 .week-day .lunar-day {
