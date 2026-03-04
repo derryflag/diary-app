@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000
 const DATA_FILE = path.join(__dirname, 'data', 'diaries.json')
 
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001'],
   credentials: true
 }))
 app.use(express.json())

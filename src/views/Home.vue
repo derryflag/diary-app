@@ -1,11 +1,15 @@
 <template>
   <div class="calendar-view">
     <div class="calendar-header">
-      <h1>日记本</h1>
-      <h2 class="center-title">团团的幸福生活</h2>
-      <div class="view-toggle">
-        <button @click="viewMode = 'week'" :class="{ active: viewMode === 'week' }">周视图</button>
-        <button @click="viewMode = 'month'" :class="{ active: viewMode === 'month' }">月视图</button>
+      <div class="header-row">
+        <h1>日记本</h1>
+        <div class="view-toggle">
+          <button @click="viewMode = 'week'" :class="{ active: viewMode === 'week' }">周视图</button>
+          <button @click="viewMode = 'month'" :class="{ active: viewMode === 'month' }">月视图</button>
+        </div>
+      </div>
+      <div class="title-row">
+        <span class="center-title">团团的幸福生活</span>
       </div>
       <div class="month-navigation">
         <button @click="viewMode === 'month' ? previousMonth() : previousWeek()" class="nav-btn">&lt;</button>
@@ -451,13 +455,33 @@ export default {
 }
 
 .calendar-header {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
   margin-bottom: 30px;
   padding-bottom: 20px;
   border-bottom: 2px solid #f0f0f0;
+}
+
+.header-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.view-toggle {
+  position: absolute;
+  right: 0;
+}
+
+.title-row {
+  text-align: center;
+  margin: 10px 0;
+}
+
+.month-navigation {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
 }
 
 .view-toggle {
@@ -468,9 +492,9 @@ export default {
 .view-toggle button {
   background: #f8f8f8;
   border: 1px solid #e0e0e0;
-  padding: 6px 16px;
+  padding: 4px 10px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 12px;
   border-radius: 6px;
   transition: all 0.3s;
   color: #666;
@@ -1109,7 +1133,7 @@ export default {
   .week-diary-content {
     flex: 1 !important;
     font-size: 12px !important;
-    max-height: 3.5em !important;
+    max-height: 4.5em !important;
     overflow: hidden !important;
   }
   
