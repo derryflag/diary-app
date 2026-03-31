@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Home from '../views/Home.vue'
+import Chart3D from '../views/Chart3D.vue'
+import Pie3D from '../views/Pie3D.vue'
 
 const routes = [
   {
@@ -7,7 +9,16 @@ const routes = [
     name: 'Home',
     component: Home
   },
-  // 添加一个通配符路由，所有路径都重定向到首页
+  {
+    path: '/chart',
+    name: 'Chart3D',
+    component: Chart3D
+  },
+  {
+    path: '/pie',
+    name: 'Pie3D',
+    component: Pie3D
+  },
   {
     path: '/:pathMatch(.*)*',
     redirect: '/'

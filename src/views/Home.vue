@@ -9,7 +9,7 @@
         </div>
       </div>
       <div class="title-row">
-        <span class="center-title">团团的幸福生活</span>
+        <span class="center-title">灰兔云成长日记本</span>
       </div>
       <div class="month-navigation">
         <button @click="viewMode === 'month' ? previousMonth() : previousWeek()" class="nav-btn">&lt;</button>
@@ -130,11 +130,18 @@
     <div class="footer-actions">
       <button @click="handleExport" class="action-btn">导出备份</button>
     </div>
+    
+    <div class="footer-beian">
+      <a href="http://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">
+        京ICP备2026015390号-1
+      </a>
+    </div>
   </div>
 </template>
 
 <script>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { getDiaryByDate } from '../utils/diaryUtils'
 import { getLunarInfo } from '../utils/lunar'
 import { dbAPI, exportToJSON } from '../utils/db'
@@ -142,6 +149,7 @@ import { dbAPI, exportToJSON } from '../utils/db'
 export default {
   name: 'Home',
   setup() {
+    const router = useRouter()
     const currentDate = ref(new Date())
     const viewMode = ref('week')
     const diaries = ref([])
@@ -390,6 +398,14 @@ export default {
       exportToJSON(diaries.value)
     }
     
+    const goToChart = () => {
+      router.push('/chart')
+    }
+    
+    const goToPie = () => {
+      router.push('/pie')
+    }
+    
     const handleKeydown = (e) => {
       if (e.key === 'Escape') {
         closeDiaryModal()
@@ -434,7 +450,9 @@ export default {
       saveDiary,
       deleteDiary,
       closeDiaryModal,
-      handleExport
+      handleExport,
+      goToChart,
+      goToPie
     }
   }
 }
@@ -452,6 +470,25 @@ export default {
   text-align: center;
   padding-top: 20px;
   border-top: 1px solid #e8e8e8;
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+}
+
+.footer-beian {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 12px;
+  color: #999;
+}
+
+.footer-beian a {
+  color: #999;
+  text-decoration: none;
+}
+
+.footer-beian a:hover {
+  color: #5b9bd5;
 }
 
 .calendar-header {
