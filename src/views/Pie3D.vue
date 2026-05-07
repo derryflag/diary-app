@@ -84,7 +84,10 @@ export default {
         
         const segments = 30
         const midAngle = startAngle + angle / 2
-        const zValue = Math.round(Math.sin(midAngle) * 100)
+        let zValue = Math.round(Math.sin(midAngle) * 100)
+        if (categoryIndex === 1) {
+          zValue = 200
+        }
         console.log(`[${categoryIndex}] ${data[categoryIndex].name}: midAngle=${midAngle.toFixed(2)}, zValue=${zValue}`)
 
         const gradientColor = {
