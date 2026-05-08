@@ -63,7 +63,7 @@
           <img :src="'/thumbnails/' + currentImage.thumbnail" :alt="currentImage.originalName">
           <div class="play-btn">▶</div>
         </div>
-        <video v-else :src="'/videos/' + (currentImage.videoCompressed || currentImage.filename)" controls autoplay></video>
+        <video v-else :src="'/videos/' + (currentImage.videoCompressed || currentImage.filename)" controls autoplay playsinline webkit-playsinline></video>
       </div>
       <img v-else :src="currentImage?.thumbnail ? '/thumbnails/' + currentImage.thumbnail : getFullImageUrl(currentImage?.filename)" :alt="currentImage?.originalName" @click.stop>
       <button class="preview-nav next" @click.stop="nextImage" v-if="flattenedImages.length > 1">&gt;</button>
@@ -595,10 +595,11 @@ export default {
 }
 
 .video-container video {
-  max-width: 100%;
-  max-height: 100%;
+  display: block;
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
 }
 
@@ -710,16 +711,25 @@ export default {
   }
 
   .preview-modal video {
-    max-width: 100%;
-    max-height: 100%;
+    display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
   }
 
+  .video-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   .video-container video {
-    max-width: 100%;
-    max-height: 100%;
+    display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
