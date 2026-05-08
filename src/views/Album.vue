@@ -14,14 +14,29 @@
       >
     </div>
 
+    <div class="column-control">
+      <span>每行</span>
+      <button 
+        v-for="n in [3, 4, 5]" 
+        :key="n" 
+        :class="{ active: columnCount === n }"
+        @click="columnCount = n"
+      >{{ n }}</button>
+      <span>个</span>
+    </div>
+
     <div v-if="isUploading" class="loading">
-      上传中...
+      <div class="upload-status">{{ processingStatus || '上传中...' }}</div>
+      <div class="progress-bar">
+        <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
+      </div>
+      <div class="progress-text">{{ uploadProgress }}%</div>
     </div>
 
     <div v-if="displayedGroups.length > 0">
       <div v-for="group in displayedGroups" :key="group.dateKey" class="date-group">
         <div class="date-label">{{ group.label }}</div>
-        <div class="images-grid">
+        <div class="images-grid" :style="gridStyle">
           <div 
             v-for="(item) in group.images" 
             :key="item.id" 
@@ -69,6 +84,8 @@ export default {
     const router = useRouter()
     const fileInput = ref(null)
     const isUploading = ref(false)
+    const uploadProgress = ref(0)
+    const processingStatus = ref('')
     const images = ref([])
     const showPreview = ref(false)
     const isPlaying = ref(false)
@@ -78,9 +95,17 @@ export default {
     const flattenedImages = ref([])
     const hasMore = ref(false)
     const INITIAL_LOAD = 3
+    const columnCount = ref(4)
     
     const currentImage = computed(() => {
       return flattenedImages.value[currentIndex.value] || null
+    })
+
+    const gridStyle = computed(() => {
+      const itemWidth = `calc((100% - ${(columnCount.value - 1) * 15}px) / ${columnCount.value})`
+      return {
+        gridTemplateColumns: `repeat(${columnCount.value}, ${itemWidth})`
+      }
     })
 
     const goBack = () => {
@@ -167,18 +192,43 @@ export default {
       }
 
       isUploading.value = true
+      uploadProgress.value = 0
+      processingStatus.value = ''
 
-      for (const file of validFiles) {
+      for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i]
         const formData = new FormData()
         formData.append('media', file)
 
+        const isVideo = file.type.startsWith('video/')
+        if (isVideo) {
+          processingStatus.value = `正在上传第 ${i + 1}/${validFiles.length} 个视频...`
+        }
+
         try {
-          const res = await fetch('/api/album', {
-            method: 'POST',
-            body: formData
+          const uploaded = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest()
+            xhr.upload.addEventListener('progress', (e) => {
+              if (e.lengthComputable) {
+                const percent = Math.round((e.loaded / e.total) * 100)
+                uploadProgress.value = percent
+              }
+            })
+            xhr.addEventListener('load', () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                resolve(JSON.parse(xhr.responseText))
+              } else {
+                reject(new Error('上传失败'))
+              }
+            })
+            xhr.addEventListener('error', () => reject(new Error('上传失败')))
+            xhr.open('POST', '/api/album')
+            xhr.send(formData)
           })
-          const result = await res.json()
-          if (result.success) {
+
+          if (uploaded.success && isVideo) {
+            processingStatus.value = `正在处理第 ${i + 1}/${validFiles.length} 个视频...`
+            uploadProgress.value = 100
           }
         } catch (err) {
           console.error('上传失败:', err)
@@ -186,6 +236,8 @@ export default {
         }
       }
 
+      processingStatus.value = ''
+      uploadProgress.value = 0
       await loadImages()
       isUploading.value = false
     }
@@ -265,6 +317,8 @@ export default {
       router,
       fileInput,
       isUploading,
+      uploadProgress,
+      processingStatus,
       images,
       displayedGroups,
       flattenedImages,
@@ -273,8 +327,10 @@ export default {
       isPlaying,
       currentIndex,
       currentImage,
+      columnCount,
       goBack,
       getFullImageUrl,
+      gridStyle,
       triggerFileInput,
       handleFileSelect,
       deleteImage,
@@ -353,6 +409,55 @@ export default {
   color: #5b9bd5;
 }
 
+.column-control {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 15px;
+  justify-content: flex-end;
+}
+
+.column-control button {
+  padding: 4px 10px;
+  border: 1px solid #ddd;
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #666;
+}
+
+.column-control button.active {
+  background: linear-gradient(135deg, #85c285, #6bb36b);
+  color: white;
+  border-color: #85c285;
+}
+
+.upload-status {
+  margin-bottom: 10px;
+  font-size: 14px;
+}
+
+.progress-bar {
+  width: 100%;
+  max-width: 300px;
+  height: 10px;
+  background: #e0e0e0;
+  border-radius: 5px;
+  margin: 0 auto 10px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(135deg, #85c285, #6bb36b);
+  transition: width 0.2s;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: #999;
+}
+
 .date-group {
   margin-bottom: 30px;
 }
@@ -368,7 +473,6 @@ export default {
 
 .images-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 15px;
 }
 
@@ -468,6 +572,15 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+.video-container video {
+  max-width: 100%;
+  max-height: 90vh;
+  width: 100%;
+  height: auto;
 }
 
 .video-thumb {
@@ -575,6 +688,13 @@ export default {
 
   .preview-nav.next {
     right: 10px;
+  }
+
+  .video-container video {
+    max-width: 100vw;
+    max-height: 100vh;
+    width: 100vw;
+    height: auto;
   }
 }
 </style>
