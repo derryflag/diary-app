@@ -89,6 +89,7 @@ export default {
     const images = ref([])
     const showPreview = ref(false)
     const isPlaying = ref(false)
+    const previewHistoryPushed = ref(false)
     const currentIndex = ref(0)
     const allGroups = ref([])
     const displayedGroups = ref([])
@@ -264,11 +265,19 @@ export default {
       const index = flattenedImages.value.findIndex(i => i.id === item.id)
       currentIndex.value = index >= 0 ? index : 0
       showPreview.value = true
+      if (!previewHistoryPushed.value) {
+        previewHistoryPushed.value = true
+        history.pushState({ preview: true }, '')
+      }
     }
 
-    const closePreview = () => {
+    const closePreview = (fromPopstate = false) => {
       isPlaying.value = false
       showPreview.value = false
+      if (!fromPopstate && previewHistoryPushed.value) {
+        previewHistoryPushed.value = false
+        history.back()
+      }
     }
 
     const playVideo = () => {
@@ -285,20 +294,29 @@ export default {
 
     const handleKeydown = (e) => {
       if (!showPreview.value) return
-      if (e.key === 'Escape') closePreview()
+      if (e.key === 'Escape') closePreview(false)
       if (e.key === 'ArrowLeft') prevImage()
       if (e.key === 'ArrowRight') nextImage()
+    }
+
+    const handlePopstate = (e) => {
+      if (showPreview.value) {
+        e.preventDefault()
+        closePreview(true)
+      }
     }
 
     onMounted(() => {
       loadImages()
       window.addEventListener('keydown', handleKeydown)
       window.addEventListener('scroll', handleScroll)
+      window.addEventListener('popstate', handlePopstate)
     })
 
     onUnmounted(() => {
       window.removeEventListener('keydown', handleKeydown)
       window.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('popstate', handlePopstate)
     })
 
     const handleScroll = () => {
@@ -578,9 +596,10 @@ export default {
 
 .video-container video {
   max-width: 100%;
-  max-height: 90vh;
+  max-height: 100%;
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: contain;
 }
 
 .video-thumb {
@@ -690,11 +709,31 @@ export default {
     right: 10px;
   }
 
+  .preview-modal video {
+    max-width: 100%;
+    max-height: 100%;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
   .video-container video {
-    max-width: 100vw;
-    max-height: 100vh;
-    width: 100vw;
-    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .video-thumb {
+    width: 100%;
+  }
+
+  .video-thumb img {
+    max-width: 100%;
+    max-height: 85vh;
+    width: 100%;
+    object-fit: contain;
   }
 }
 </style>
