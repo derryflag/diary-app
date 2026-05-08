@@ -5,6 +5,8 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import multer from 'multer'
 import { v4 as uuidv4 } from 'uuid'
+import sharp from 'sharp'
+import ffmpeg from 'fluent-ffmpeg'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -13,6 +15,7 @@ const app = express()
 const PORT = process.env.PORT || 3000
 const DATA_FILE = path.join(__dirname, 'data', 'diaries.json')
 const ALBUM_DIR = path.join(__dirname, 'data', 'album')
+const THUMBNAIL_DIR = path.join(__dirname, 'data', 'album', 'thumbnails')
 const ALBUM_FILE = path.join(__dirname, 'data', 'album.json')
 
 app.use(cors({
@@ -27,12 +30,16 @@ if (!fs.existsSync(ALBUM_DIR)) {
   fs.mkdirSync(ALBUM_DIR, { recursive: true })
 }
 
+if (!fs.existsSync(THUMBNAIL_DIR)) {
+  fs.mkdirSync(THUMBNAIL_DIR, { recursive: true })
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase()
     const match = file.originalname.match(/(\d{8})/)
     const dateDir = match ? match[1] : 'other'
-    
+
     const targetDir = path.join(ALBUM_DIR, dateDir)
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true })
@@ -44,20 +51,22 @@ const storage = multer.diskStorage({
   }
 })
 
+const IMAGE_TYPES = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+const VIDEO_TYPES = ['.mp4', '.mov', '.avi', '.mkv', '.webm']
+
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
   const ext = path.extname(file.originalname).toLowerCase()
-  if (allowedTypes.includes(ext)) {
+  if (IMAGE_TYPES.includes(ext) || VIDEO_TYPES.includes(ext)) {
     cb(null, true)
   } else {
-    cb(new Error('不支持的图片格式'), false)
+    cb(new Error('不支持的文件格式'), false)
   }
 }
 
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }
+  limits: { fileSize: 100 * 1024 * 1024 }
 })
 
 const readDiaries = () => {
@@ -98,6 +107,30 @@ const writeAlbum = (album) => {
   fs.writeFileSync(ALBUM_FILE, JSON.stringify(album, null, 2))
 }
 
+const isVideo = (filename) => {
+  const ext = path.extname(filename).toLowerCase()
+  return VIDEO_TYPES.includes(ext)
+}
+
+const generateImageThumbnail = async (filePath, thumbPath) => {
+  await sharp(filePath)
+    .resize(800, 800, { fit: 'inside', withoutEnlargement: true })
+    .jpeg({ quality: 80 })
+    .toFile(thumbPath)
+}
+
+const generateVideoThumbnail = (filePath, thumbPath) => {
+  return new Promise((resolve, reject) => {
+    ffmpeg(filePath)
+      .seek(1)
+      .outputOptions(['-vframes', '1'])
+      .output(thumbPath)
+      .on('end', () => resolve())
+      .on('error', (err) => reject(err))
+      .run()
+  })
+}
+
 app.get('/api/diaries', (req, res) => {
   const diaries = readDiaries()
   res.json(diaries)
@@ -135,27 +168,49 @@ app.get('/api/album', (req, res) => {
   res.json(album)
 })
 
-app.post('/api/album', upload.single('image'), (req, res) => {
+app.post('/api/album', upload.single('media'), async (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ error: '请上传图片文件' })
+    return res.status(400).json({ error: '请上传文件' })
   }
 
   const ext = path.extname(req.file.originalname).toLowerCase()
   const match = req.file.originalname.match(/(\d{8})/)
   const dateDir = match ? match[1] : 'other'
   const relativePath = `${dateDir}/${req.file.filename}`
+  const mediaType = isVideo(req.file.originalname) ? 'video' : 'image'
 
-  const album = readAlbum()
-  const newItem = {
-    id: uuidv4(),
-    filename: relativePath,
-    originalName: req.file.originalname,
-    uploadTime: new Date().toISOString()
+  try {
+    const thumbDir = path.join(THUMBNAIL_DIR, dateDir)
+    if (!fs.existsSync(thumbDir)) {
+      fs.mkdirSync(thumbDir, { recursive: true })
+    }
+
+    const thumbFilename = `thumb_${req.file.filename.replace(ext, '.jpg')}`
+    const thumbPath = path.join(thumbDir, thumbFilename)
+
+    if (mediaType === 'video') {
+      await generateVideoThumbnail(req.file.path, thumbPath)
+    } else {
+      await generateImageThumbnail(req.file.path, thumbPath)
+    }
+
+    const album = readAlbum()
+    const newItem = {
+      id: uuidv4(),
+      filename: relativePath,
+      thumbnail: `${dateDir}/${thumbFilename}`,
+      originalName: req.file.originalname,
+      mediaType,
+      uploadTime: new Date().toISOString()
+    }
+    album.unshift(newItem)
+    writeAlbum(album)
+
+    res.json({ success: true, data: newItem })
+  } catch (err) {
+    console.error('处理文件失败:', err)
+    res.status(500).json({ error: '处理文件失败' })
   }
-  album.unshift(newItem)
-  writeAlbum(album)
-
-  res.json({ success: true, data: newItem })
 })
 
 app.delete('/api/album/:id', (req, res) => {
@@ -168,6 +223,14 @@ app.delete('/api/album/:id', (req, res) => {
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath)
     }
+
+    if (item.thumbnail) {
+      const thumbPath = path.join(THUMBNAIL_DIR, item.thumbnail)
+      if (fs.existsSync(thumbPath)) {
+        fs.unlinkSync(thumbPath)
+      }
+    }
+
     const dir = path.dirname(filePath)
     if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
       fs.rmdirSync(dir)
@@ -176,16 +239,17 @@ app.delete('/api/album/:id', (req, res) => {
     writeAlbum(album)
     res.json({ success: true })
   } else {
-    res.status(404).json({ error: '图片不存在' })
+    res.status(404).json({ error: '文件不存在' })
   }
 })
 
 app.use('/uploads', express.static(ALBUM_DIR))
+app.use('/thumbnails', express.static(THUMBNAIL_DIR))
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'))
 })
 
-app.listen(PORT, () => {
-  console.log(`服务已启动: http://localhost:${PORT}`)
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`服务已启动: http://0.0.0.0:${PORT}`)
 })

@@ -1,7 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Home from '../views/Home.vue'
-import Chart3D from '../views/Chart3D.vue'
-import Pie3D from '../views/Pie3D.vue'
 import Album from '../views/Album.vue'
 
 const routes = [
@@ -13,12 +11,12 @@ const routes = [
   {
     path: '/chart',
     name: 'Chart3D',
-    component: Chart3D
+    component: () => import('../views/Chart3D.vue')
   },
   {
     path: '/pie',
     name: 'Pie3D',
-    component: Pie3D
+    component: () => import('../views/Pie3D.vue')
   },
   {
     path: '/album',

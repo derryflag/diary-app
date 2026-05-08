@@ -2,12 +2,12 @@
   <div class="album-view">
     <div class="album-header">
       <button @click="goBack" class="back-btn">去日记</button>
-      <h1>相册</h1>
+      <h1>灰兔相册</h1>
       <button @click="triggerFileInput" class="upload-btn">上传</button>
       <input 
         ref="fileInput" 
         type="file" 
-        accept="image/jpeg,image/png,image/gif,image/webp" 
+        accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm" 
         multiple 
         @change="handleFileSelect"
         style="display: none"
@@ -23,13 +23,14 @@
         <div class="date-label">{{ group.label }}</div>
         <div class="images-grid">
           <div 
-            v-for="(img, index) in group.images" 
-            :key="img.id" 
+            v-for="(item) in group.images" 
+            :key="item.id" 
             class="image-item"
-            @click="openPreview(group.dateKey, index)"
+            @click="openPreview(item)"
           >
-            <img :src="img.thumbnail || getFullImageUrl(img.filename)" :alt="img.originalName" loading="lazy">
-            <button class="delete-btn" @click.stop="deleteImage(img.id)">&times;</button>
+            <img :src="item.thumbnail ? '/thumbnails/' + item.thumbnail : getFullImageUrl(item.filename)" :alt="item.originalName" loading="lazy">
+            <div v-if="item.mediaType === 'video'" class="video-indicator">▶</div>
+            <button class="delete-btn" @click.stop="deleteImage(item.id)">&times;</button>
           </div>
         </div>
       </div>
@@ -42,7 +43,10 @@
     <div v-if="showPreview" class="preview-modal" @click="closePreview">
       <button class="preview-close" @click="closePreview">&times;</button>
       <button class="preview-nav prev" @click.stop="prevImage" v-if="flattenedImages.length > 1">&lt;</button>
-      <img :src="getFullImageUrl(currentImage?.filename)" :alt="currentImage?.originalName" @click.stop>
+      <div v-if="currentImage?.mediaType === 'video'" class="video-container" @click.stop>
+        <video :src="'/uploads/' + currentImage.filename" controls autoplay></video>
+      </div>
+      <img v-else :src="currentImage?.thumbnail ? '/thumbnails/' + currentImage.thumbnail : getFullImageUrl(currentImage?.filename)" :alt="currentImage?.originalName" @click.stop>
       <button class="preview-nav next" @click.stop="nextImage" v-if="flattenedImages.length > 1">&gt;</button>
       <div class="preview-info">
         <span>{{ currentImage?.originalName }}</span>
@@ -52,7 +56,7 @@
 </template>
 
 <script>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 
 export default {
@@ -69,6 +73,10 @@ export default {
     const flattenedImages = ref([])
     const hasMore = ref(false)
     const INITIAL_LOAD = 3
+    
+    const currentImage = computed(() => {
+      return flattenedImages.value[currentIndex.value] || null
+    })
 
     const goBack = () => {
       router.push('/')
@@ -91,13 +99,13 @@ export default {
         const data = await res.json()
         
         const groups = {}
-        for (const img of data) {
-          const match = img.filename.match(/^(\d{8})\//)
+        for (const item of data) {
+          const match = item.filename.match(/^(\d{8})\//)
           const dateKey = match ? match[1] : 'other'
           if (!groups[dateKey]) {
             groups[dateKey] = []
           }
-          groups[dateKey].push(img)
+          groups[dateKey].push(item)
         }
         
         const sortedKeys = Object.keys(groups).sort((a, b) => {
@@ -116,13 +124,6 @@ export default {
         displayedGroups.value = allGroups.value.slice(0, INITIAL_LOAD)
         hasMore.value = allGroups.value.length > INITIAL_LOAD
         
-        for (const group of displayedGroups.value) {
-          for (const img of group.images) {
-            img.thumbnail = await generateThumbnail(img.filename)
-          }
-          group.loaded = true
-        }
-        
         flattenedImages.value = displayedGroups.value.flatMap(g => g.images)
       } catch (err) {
         console.error('加载图片失败:', err)
@@ -133,48 +134,9 @@ export default {
       const currentLength = displayedGroups.value.length
       const nextGroups = allGroups.value.slice(currentLength, currentLength + INITIAL_LOAD)
       
-      for (const group of nextGroups) {
-        for (const img of group.images) {
-          img.thumbnail = await generateThumbnail(img.filename)
-        }
-        group.loaded = true
-      }
-      
       displayedGroups.value = [...displayedGroups.value, ...nextGroups]
       hasMore.value = displayedGroups.value.length < allGroups.value.length
       flattenedImages.value = displayedGroups.value.flatMap(g => g.images)
-    }
-
-    const generateThumbnail = async (filename) => {
-      return new Promise((resolve) => {
-        const img = new Image()
-        img.crossOrigin = 'anonymous'
-        img.onload = () => {
-          const canvas = document.createElement('canvas')
-          const ctx = canvas.getContext('2d')
-          const maxSize = 1200
-          let { width, height } = img
-          
-          if (width > height) {
-            if (width > maxSize) {
-              height = (height * maxSize) / width
-              width = maxSize
-            }
-          } else {
-            if (height > maxSize) {
-              width = (width * maxSize) / height
-              height = maxSize
-            }
-          }
-          
-          canvas.width = width
-          canvas.height = height
-          ctx.drawImage(img, 0, 0, width, height)
-          resolve(canvas.toDataURL('image/jpeg', 0.7))
-        }
-        img.onerror = () => resolve(null)
-        img.src = getFullImageUrl(filename)
-      })
     }
 
     const triggerFileInput = () => {
@@ -189,13 +151,13 @@ export default {
 
     const processFiles = async (files) => {
       const validFiles = files.filter(file => {
-        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-        const maxSize = 10 * 1024 * 1024
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/webm']
+        const maxSize = 100 * 1024 * 1024
         return allowedTypes.includes(file.type) && file.size <= maxSize
       })
 
       if (validFiles.length === 0) {
-        alert('请上传有效的图片文件（jpg, png, gif, webp），且大小不超过10MB')
+        alert('请上传有效的图片或视频文件，大小不超过100MB')
         return
       }
 
@@ -203,7 +165,7 @@ export default {
 
       for (const file of validFiles) {
         const formData = new FormData()
-        formData.append('image', file)
+        formData.append('media', file)
 
         try {
           const res = await fetch('/api/album', {
@@ -212,7 +174,6 @@ export default {
           })
           const result = await res.json()
           if (result.success) {
-            // 上传成功后重新加载以刷新分组
           }
         } catch (err) {
           console.error('上传失败:', err)
@@ -224,63 +185,8 @@ export default {
       isUploading.value = false
     }
 
-    const fileToThumbnail = (file) => {
-      return new Promise((resolve) => {
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          const img = new Image()
-          img.onload = () => {
-            const canvas = document.createElement('canvas')
-            const ctx = canvas.getContext('2d')
-            const maxSize = 1200
-            let { width, height } = img
-            
-            if (width > height) {
-              if (width > maxSize) {
-                height = (height * maxSize) / width
-                width = maxSize
-              }
-            } else {
-              if (height > maxSize) {
-                width = (width * maxSize) / height
-                height = maxSize
-              }
-            }
-            
-            canvas.width = width
-            canvas.height = height
-            ctx.drawImage(img, 0, 0, width, height)
-            resolve(canvas.toDataURL('image/jpeg', 0.9))
-          }
-          img.onerror = () => resolve(null)
-          img.src = e.target.result
-        }
-        reader.readAsDataURL(file)
-      })
-    }
-
-    const uploadFiles = async (files) => {
-      for (const file of files) {
-        const formData = new FormData()
-        formData.append('image', file)
-
-        try {
-          const res = await fetch('/api/album', {
-            method: 'POST',
-            body: formData
-          })
-          const result = await res.json()
-          if (result.success) {
-            await loadImages()
-          }
-        } catch (err) {
-          console.error('上传失败:', err)
-        }
-      }
-    }
-
     const deleteImage = async (id) => {
-      if (!confirm('确定要删除这张图片吗？')) return
+      if (!confirm('确定要删除这个文件吗？')) return
 
       try {
         const res = await fetch(`/api/album/${id}`, {
@@ -296,8 +202,9 @@ export default {
       }
     }
 
-    const openPreview = (index) => {
-      currentIndex.value = index
+    const openPreview = (item) => {
+      const index = flattenedImages.value.findIndex(i => i.id === item.id)
+      currentIndex.value = index >= 0 ? index : 0
       showPreview.value = true
     }
 
@@ -353,7 +260,7 @@ export default {
       hasMore,
       showPreview,
       currentIndex,
-      currentImage: () => flattenedImages.value[currentIndex.value],
+      currentImage,
       goBack,
       getFullImageUrl,
       triggerFileInput,
@@ -379,6 +286,7 @@ export default {
 .album-header {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 15px;
   margin-bottom: 30px;
 }
@@ -471,6 +379,22 @@ export default {
   object-fit: cover;
 }
 
+.image-item .video-indicator {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+
 .image-item .delete-btn {
   position: absolute;
   top: 5px;
@@ -502,27 +426,6 @@ export default {
   color: #999;
 }
 
-.load-more {
-  text-align: center;
-  padding: 20px;
-}
-
-.load-more-btn {
-  background: linear-gradient(135deg, #85c285, #6bb36b);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  padding: 10px 30px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.3s;
-}
-
-.load-more-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(133, 194, 133, 0.4);
-}
-
 .preview-modal {
   position: fixed;
   top: 0;
@@ -540,6 +443,18 @@ export default {
   max-width: 90%;
   max-height: 85vh;
   object-fit: contain;
+}
+
+.preview-modal video {
+  max-width: 90%;
+  max-height: 85vh;
+  object-fit: contain;
+}
+
+.video-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .preview-close {
@@ -593,6 +508,11 @@ export default {
 
   .album-header {
     margin-bottom: 20px;
+    justify-content: flex-start;
+  }
+
+  .album-header h1 {
+    flex: 1;
   }
 
   .images-grid {
