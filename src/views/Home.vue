@@ -2,8 +2,8 @@
   <div class="calendar-view">
     <div class="calendar-header">
       <div class="header-row">
-        <h1>日记本</h1>
         <button @click="goToAlbum" class="album-btn">去相册</button>
+        <h1>日记本</h1>
         <div class="view-toggle">
           <button @click="viewMode = 'week'" :class="{ active: viewMode === 'week' }">周视图</button>
           <button @click="viewMode = 'month'" :class="{ active: viewMode === 'month' }">月视图</button>
@@ -505,8 +505,9 @@ export default {
 
 .header-row {
   display: flex;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
+  gap: 15px;
   position: relative;
 }
 
@@ -516,8 +517,6 @@ export default {
 }
 
 .album-btn {
-  position: absolute;
-  right: 150px;
   background: linear-gradient(135deg, #ffb347, #ff9500);
   border: none;
   border-radius: 6px;

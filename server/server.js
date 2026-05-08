@@ -16,6 +16,7 @@ const PORT = process.env.PORT || 3000
 const DATA_FILE = path.join(__dirname, 'data', 'diaries.json')
 const ALBUM_DIR = path.join(__dirname, 'data', 'album')
 const THUMBNAIL_DIR = path.join(__dirname, 'data', 'album', 'thumbnails')
+const VIDEO_DIR = path.join(__dirname, 'data', 'album', 'videos')
 const ALBUM_FILE = path.join(__dirname, 'data', 'album.json')
 
 app.use(cors({
@@ -32,6 +33,10 @@ if (!fs.existsSync(ALBUM_DIR)) {
 
 if (!fs.existsSync(THUMBNAIL_DIR)) {
   fs.mkdirSync(THUMBNAIL_DIR, { recursive: true })
+}
+
+if (!fs.existsSync(VIDEO_DIR)) {
+  fs.mkdirSync(VIDEO_DIR, { recursive: true })
 }
 
 const storage = multer.diskStorage({
@@ -131,6 +136,24 @@ const generateVideoThumbnail = (filePath, thumbPath) => {
   })
 }
 
+const generateCompressedVideo = (filePath, compressedPath) => {
+  return new Promise((resolve, reject) => {
+    ffmpeg(filePath)
+      .outputOptions([
+        '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2',
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-crf', '28',
+        '-c:a', 'aac',
+        '-b:a', '96k'
+      ])
+      .output(compressedPath)
+      .on('end', () => resolve())
+      .on('error', (err) => reject(err))
+      .run()
+  })
+}
+
 app.get('/api/diaries', (req, res) => {
   const diaries = readDiaries()
   res.json(diaries)
@@ -194,6 +217,18 @@ app.post('/api/album', upload.single('media'), async (req, res) => {
       await generateImageThumbnail(req.file.path, thumbPath)
     }
 
+    let videoCompressed = null
+    if (mediaType === 'video') {
+      const videoSubDir = path.join(VIDEO_DIR, dateDir)
+      if (!fs.existsSync(videoSubDir)) {
+        fs.mkdirSync(videoSubDir, { recursive: true })
+      }
+      const compressedFilename = req.file.filename.replace(ext, '_720p.mp4')
+      const compressedPath = path.join(videoSubDir, compressedFilename)
+      await generateCompressedVideo(req.file.path, compressedPath)
+      videoCompressed = `${dateDir}/${compressedFilename}`
+    }
+
     const album = readAlbum()
     const newItem = {
       id: uuidv4(),
@@ -201,6 +236,7 @@ app.post('/api/album', upload.single('media'), async (req, res) => {
       thumbnail: `${dateDir}/${thumbFilename}`,
       originalName: req.file.originalname,
       mediaType,
+      videoCompressed,
       uploadTime: new Date().toISOString()
     }
     album.unshift(newItem)
@@ -231,6 +267,13 @@ app.delete('/api/album/:id', (req, res) => {
       }
     }
 
+    if (item.videoCompressed) {
+      const compressedPath = path.join(VIDEO_DIR, item.videoCompressed)
+      if (fs.existsSync(compressedPath)) {
+        fs.unlinkSync(compressedPath)
+      }
+    }
+
     const dir = path.dirname(filePath)
     if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
       fs.rmdirSync(dir)
@@ -245,6 +288,7 @@ app.delete('/api/album/:id', (req, res) => {
 
 app.use('/uploads', express.static(ALBUM_DIR))
 app.use('/thumbnails', express.static(THUMBNAIL_DIR))
+app.use('/videos', express.static(VIDEO_DIR))
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'))

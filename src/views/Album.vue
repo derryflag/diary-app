@@ -44,7 +44,11 @@
       <button class="preview-close" @click="closePreview">&times;</button>
       <button class="preview-nav prev" @click.stop="prevImage" v-if="flattenedImages.length > 1">&lt;</button>
       <div v-if="currentImage?.mediaType === 'video'" class="video-container" @click.stop>
-        <video :src="'/uploads/' + currentImage.filename" controls autoplay></video>
+        <div v-if="!isPlaying" class="video-thumb" @click="playVideo">
+          <img :src="'/thumbnails/' + currentImage.thumbnail" :alt="currentImage.originalName">
+          <div class="play-btn">▶</div>
+        </div>
+        <video v-else :src="'/videos/' + (currentImage.videoCompressed || currentImage.filename)" controls autoplay></video>
       </div>
       <img v-else :src="currentImage?.thumbnail ? '/thumbnails/' + currentImage.thumbnail : getFullImageUrl(currentImage?.filename)" :alt="currentImage?.originalName" @click.stop>
       <button class="preview-nav next" @click.stop="nextImage" v-if="flattenedImages.length > 1">&gt;</button>
@@ -67,6 +71,7 @@ export default {
     const isUploading = ref(false)
     const images = ref([])
     const showPreview = ref(false)
+    const isPlaying = ref(false)
     const currentIndex = ref(0)
     const allGroups = ref([])
     const displayedGroups = ref([])
@@ -203,13 +208,19 @@ export default {
     }
 
     const openPreview = (item) => {
+      isPlaying.value = false
       const index = flattenedImages.value.findIndex(i => i.id === item.id)
       currentIndex.value = index >= 0 ? index : 0
       showPreview.value = true
     }
 
     const closePreview = () => {
+      isPlaying.value = false
       showPreview.value = false
+    }
+
+    const playVideo = () => {
+      isPlaying.value = true
     }
 
     const prevImage = () => {
@@ -259,6 +270,7 @@ export default {
       flattenedImages,
       hasMore,
       showPreview,
+      isPlaying,
       currentIndex,
       currentImage,
       goBack,
@@ -268,6 +280,7 @@ export default {
       deleteImage,
       openPreview,
       closePreview,
+      playVideo,
       prevImage,
       nextImage,
       loadMore
@@ -455,6 +468,37 @@ export default {
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+.video-thumb {
+  position: relative;
+  cursor: pointer;
+}
+
+.video-thumb img {
+  max-width: 90%;
+  max-height: 85vh;
+  object-fit: contain;
+}
+
+.video-thumb .play-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border-radius: 50%;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+}
+
+.video-thumb .play-btn:hover {
+  background: rgba(0, 0, 0, 0.85);
 }
 
 .preview-close {

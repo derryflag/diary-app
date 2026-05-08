@@ -18,6 +18,10 @@ export default defineConfig({
       '/thumbnails': {
         target: 'http://127.0.0.1:3000',
         changeOrigin: true
+      },
+      '/videos': {
+        target: 'http://127.0.0.1:3000',
+        changeOrigin: true
       }
     }
   }
