@@ -45,7 +45,10 @@
           >
             <img :src="item.thumbnail ? '/thumbnails/' + item.thumbnail : getFullImageUrl(item.filename)" :alt="item.originalName" loading="lazy">
             <div v-if="item.mediaType === 'video'" class="video-duration">{{ formatDuration(item.duration) }}</div>
-            <button class="delete-btn" @click.stop="deleteImage(item.id)">&times;</button>
+            <div class="action-buttons">
+              <button class="download-btn" @click.stop="downloadItem(item)" title="下载">↓</button>
+              <button class="delete-btn" @click.stop="deleteImage(item.id)" title="删除">&times;</button>
+            </div>
           </div>
         </div>
       </div>
@@ -69,6 +72,7 @@
       <button class="preview-nav next" @click.stop="nextImage" v-if="flattenedImages.length > 1">&gt;</button>
       <div class="preview-info">
         <span>{{ currentImage?.originalName }}</span>
+        <button class="preview-download-btn" @click.stop="downloadItem(currentImage)" title="下载">↓ 下载</button>
       </div>
     </div>
   </div>
@@ -268,6 +272,14 @@ export default {
       }
     }
 
+    const downloadItem = (item) => {
+      if (!item) return
+      const link = document.createElement('a')
+      link.href = `/api/album/${item.id}/download`
+      link.download = item.originalName
+      link.click()
+    }
+
     const openPreview = (item) => {
       isPlaying.value = false
       const index = flattenedImages.value.findIndex(i => i.id === item.id)
@@ -371,6 +383,7 @@ export default {
       triggerFileInput,
       handleFileSelect,
       deleteImage,
+      downloadItem,
       openPreview,
       closePreview,
       playVideo,
@@ -547,10 +560,18 @@ export default {
   line-height: 1.4;
 }
 
-.image-item .delete-btn {
+.image-item .action-buttons {
   position: absolute;
   top: 5px;
   right: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.image-item .download-btn,
+.image-item .delete-btn {
+  position: static;
   background: rgba(0, 0, 0, 0.6);
   color: white;
   border: none;
@@ -558,18 +579,26 @@ export default {
   width: 24px;
   height: 24px;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1;
   opacity: 0;
-  transition: opacity 0.3s;
+  transition: opacity 0.3s, background 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
+.image-item:hover .download-btn,
 .image-item:hover .delete-btn {
   opacity: 1;
 }
 
-.delete-btn:hover {
-  background: #ff6b6b;
+.download-btn:hover {
+  background: #5b9bd5;
+}
+
+.image-item .delete-btn {
+  font-size: 16px;
 }
 
 .empty-state {
@@ -706,6 +735,24 @@ export default {
   bottom: 20px;
   color: white;
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.preview-download-btn {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.3s;
+}
+
+.preview-download-btn:hover {
+  background: rgba(255, 255, 255, 0.4);
 }
 
 @media (max-width: 768px) {
@@ -775,6 +822,33 @@ export default {
     max-height: 85vh;
     width: 100%;
     object-fit: contain;
+  }
+
+  .image-item .action-buttons {
+    gap: 4px;
+  }
+
+  .image-item .download-btn,
+  .image-item .delete-btn {
+    width: 22px;
+    height: 22px;
+    font-size: 13px;
+  }
+
+  .image-item .delete-btn {
+    font-size: 15px;
+  }
+
+  .preview-info {
+    flex-wrap: wrap;
+    bottom: 15px;
+    padding: 0 15px;
+    font-size: 12px;
+  }
+
+  .preview-download-btn {
+    padding: 4px 10px;
+    font-size: 13px;
   }
 }
 </style>

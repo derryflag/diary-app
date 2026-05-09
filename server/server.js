@@ -296,6 +296,32 @@ app.delete('/api/album/:id', (req, res) => {
   }
 })
 
+app.get('/api/album/:id/download', (req, res) => {
+  const { id } = req.params
+  const album = readAlbum()
+  const item = album.find(a => a.id === id)
+
+  if (!item) {
+    return res.status(404).json({ error: '文件不存在' })
+  }
+
+  if (item.mediaType === 'video') {
+    const filePath = item.videoCompressed
+      ? path.join(VIDEO_DIR, item.videoCompressed)
+      : path.join(VIDEO_DIR, item.filename)
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: '文件不存在' })
+    }
+    res.download(filePath, item.originalName)
+  } else {
+    const filePath = path.join(IMAGE_DIR, item.filename)
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: '文件不存在' })
+    }
+    res.download(filePath, item.originalName)
+  }
+})
+
 app.use('/uploads', express.static(IMAGE_DIR))
 app.use('/thumbnails', express.static(THUMBNAIL_DIR))
 app.use('/videos', express.static(VIDEO_DIR))
