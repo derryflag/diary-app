@@ -140,6 +140,7 @@ build/
 
 # Data files (not tracked by git)
 server/data/
+data/
 
 # Local env files
 .env.local

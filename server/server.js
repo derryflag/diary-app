@@ -11,13 +11,16 @@ import ffmpeg from 'fluent-ffmpeg'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+const DATA_DIR = path.join(__dirname, '../data')
+const DATA_FILE = path.join(DATA_DIR, 'diaries.json')
+const ALBUM_FILE = path.join(DATA_DIR, 'album.json')
+
+const IMAGE_DIR = path.join(DATA_DIR, 'album')
+const VIDEO_DIR = path.join(DATA_DIR, 'video')
+const THUMBNAIL_DIR = path.join(DATA_DIR, 'thumbnail')
+
 const app = express()
 const PORT = process.env.PORT || 3000
-const DATA_FILE = path.join(__dirname, 'data', 'diaries.json')
-const ALBUM_DIR = path.join(__dirname, 'data', 'album')
-const THUMBNAIL_DIR = path.join(__dirname, 'data', 'album', 'thumbnails')
-const VIDEO_DIR = path.join(__dirname, 'data', 'album', 'videos')
-const ALBUM_FILE = path.join(__dirname, 'data', 'album.json')
 
 app.use(cors({
   origin: true,
@@ -27,25 +30,23 @@ app.use(express.json())
 
 app.use(express.static(path.join(__dirname, '../dist')))
 
-if (!fs.existsSync(ALBUM_DIR)) {
-  fs.mkdirSync(ALBUM_DIR, { recursive: true })
+for (const dir of [DATA_DIR, IMAGE_DIR, VIDEO_DIR, THUMBNAIL_DIR]) {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true })
+  }
 }
 
-if (!fs.existsSync(THUMBNAIL_DIR)) {
-  fs.mkdirSync(THUMBNAIL_DIR, { recursive: true })
-}
-
-if (!fs.existsSync(VIDEO_DIR)) {
-  fs.mkdirSync(VIDEO_DIR, { recursive: true })
-}
+const IMAGE_TYPES = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+const VIDEO_TYPES = ['.mp4', '.mov', '.avi', '.mkv', '.webm']
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase()
     const match = file.originalname.match(/(\d{8})/)
     const dateDir = match ? match[1] : 'other'
-
-    const targetDir = path.join(ALBUM_DIR, dateDir)
+    const isVideoFile = VIDEO_TYPES.includes(ext)
+    const baseDir = isVideoFile ? VIDEO_DIR : IMAGE_DIR
+    const targetDir = path.join(baseDir, dateDir)
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true })
     }
@@ -55,9 +56,6 @@ const storage = multer.diskStorage({
     cb(null, file.originalname)
   }
 })
-
-const IMAGE_TYPES = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
-const VIDEO_TYPES = ['.mp4', '.mov', '.avi', '.mkv', '.webm']
 
 const fileFilter = (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase()
@@ -88,9 +86,8 @@ const readDiaries = () => {
 }
 
 const writeDiaries = (diaries) => {
-  const dataDir = path.dirname(DATA_FILE)
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true })
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true })
   }
   fs.writeFileSync(DATA_FILE, JSON.stringify(diaries, null, 2))
 }
@@ -154,6 +151,15 @@ const generateCompressedVideo = (filePath, compressedPath) => {
   })
 }
 
+const getVideoDuration = (filePath) => {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(filePath, (err, metadata) => {
+      if (err) return reject(err)
+      resolve(metadata.format.duration || 0)
+    })
+  })
+}
+
 app.get('/api/diaries', (req, res) => {
   const diaries = readDiaries()
   res.json(diaries)
@@ -199,8 +205,8 @@ app.post('/api/album', upload.single('media'), async (req, res) => {
   const ext = path.extname(req.file.originalname).toLowerCase()
   const match = req.file.originalname.match(/(\d{8})/)
   const dateDir = match ? match[1] : 'other'
-  const relativePath = `${dateDir}/${req.file.filename}`
   const mediaType = isVideo(req.file.originalname) ? 'video' : 'image'
+  const relativePath = `${dateDir}/${req.file.filename}`
 
   try {
     const thumbDir = path.join(THUMBNAIL_DIR, dateDir)
@@ -208,7 +214,8 @@ app.post('/api/album', upload.single('media'), async (req, res) => {
       fs.mkdirSync(thumbDir, { recursive: true })
     }
 
-    const thumbFilename = `thumb_${req.file.filename.replace(ext, '.jpg')}`
+    const prefix = mediaType === 'video' ? 'VID_' : 'IMG_'
+    const thumbFilename = `${prefix}${req.file.filename.replace(ext, '.jpg')}`
     const thumbPath = path.join(thumbDir, thumbFilename)
 
     if (mediaType === 'video') {
@@ -218,15 +225,13 @@ app.post('/api/album', upload.single('media'), async (req, res) => {
     }
 
     let videoCompressed = null
+    let duration = null
     if (mediaType === 'video') {
-      const videoSubDir = path.join(VIDEO_DIR, dateDir)
-      if (!fs.existsSync(videoSubDir)) {
-        fs.mkdirSync(videoSubDir, { recursive: true })
-      }
       const compressedFilename = req.file.filename.replace(ext, '_720p.mp4')
-      const compressedPath = path.join(videoSubDir, compressedFilename)
+      const compressedPath = path.join(VIDEO_DIR, dateDir, compressedFilename)
       await generateCompressedVideo(req.file.path, compressedPath)
       videoCompressed = `${dateDir}/${compressedFilename}`
+      duration = await getVideoDuration(req.file.path)
     }
 
     const album = readAlbum()
@@ -237,6 +242,7 @@ app.post('/api/album', upload.single('media'), async (req, res) => {
       originalName: req.file.originalname,
       mediaType,
       videoCompressed,
+      duration,
       uploadTime: new Date().toISOString()
     }
     album.unshift(newItem)
@@ -255,7 +261,8 @@ app.delete('/api/album/:id', (req, res) => {
   const item = album.find(a => a.id === id)
 
   if (item) {
-    const filePath = path.join(ALBUM_DIR, item.filename)
+    const baseDir = item.mediaType === 'video' ? VIDEO_DIR : IMAGE_DIR
+    const filePath = path.join(baseDir, item.filename)
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath)
     }
@@ -274,10 +281,13 @@ app.delete('/api/album/:id', (req, res) => {
       }
     }
 
-    const dir = path.dirname(filePath)
-    if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
-      fs.rmdirSync(dir)
+    for (const dir of [baseDir, THUMBNAIL_DIR]) {
+      const dateDir = path.join(dir, item.filename.split('/')[0])
+      if (fs.existsSync(dateDir) && fs.readdirSync(dateDir).length === 0) {
+        fs.rmdirSync(dateDir)
+      }
     }
+
     album = album.filter(a => a.id !== id)
     writeAlbum(album)
     res.json({ success: true })
@@ -286,7 +296,7 @@ app.delete('/api/album/:id', (req, res) => {
   }
 })
 
-app.use('/uploads', express.static(ALBUM_DIR))
+app.use('/uploads', express.static(IMAGE_DIR))
 app.use('/thumbnails', express.static(THUMBNAIL_DIR))
 app.use('/videos', express.static(VIDEO_DIR))
 

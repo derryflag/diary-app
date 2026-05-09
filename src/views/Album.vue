@@ -44,7 +44,7 @@
             @click="openPreview(item)"
           >
             <img :src="item.thumbnail ? '/thumbnails/' + item.thumbnail : getFullImageUrl(item.filename)" :alt="item.originalName" loading="lazy">
-            <div v-if="item.mediaType === 'video'" class="video-indicator">▶</div>
+            <div v-if="item.mediaType === 'video'" class="video-duration">{{ formatDuration(item.duration) }}</div>
             <button class="delete-btn" @click.stop="deleteImage(item.id)">&times;</button>
           </div>
         </div>
@@ -61,9 +61,9 @@
       <div v-if="currentImage?.mediaType === 'video'" class="video-container" @click.stop>
         <div v-if="!isPlaying" class="video-thumb" @click="playVideo">
           <img :src="'/thumbnails/' + currentImage.thumbnail" :alt="currentImage.originalName">
-          <div class="play-btn">▶</div>
+          <div class="preview-video-duration">{{ formatDuration(currentImage.duration) }}</div>
         </div>
-        <video v-else :src="'/videos/' + (currentImage.videoCompressed || currentImage.filename)" controls autoplay playsinline webkit-playsinline></video>
+        <video v-else ref="videoPlayer" :src="'/videos/' + (currentImage.videoCompressed || currentImage.filename)" controls autoplay playsinline webkit-playsinline x5-video-player-type="h5" x5-video-player-fullscreen="true" x5-playsinline></video>
       </div>
       <img v-else :src="currentImage?.thumbnail ? '/thumbnails/' + currentImage.thumbnail : getFullImageUrl(currentImage?.filename)" :alt="currentImage?.originalName" @click.stop>
       <button class="preview-nav next" @click.stop="nextImage" v-if="flattenedImages.length > 1">&gt;</button>
@@ -75,7 +75,7 @@
 </template>
 
 <script>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 
 export default {
@@ -83,6 +83,7 @@ export default {
   setup() {
     const router = useRouter()
     const fileInput = ref(null)
+    const videoPlayer = ref(null)
     const isUploading = ref(false)
     const uploadProgress = ref(0)
     const processingStatus = ref('')
@@ -122,6 +123,13 @@ export default {
       const date = new Date(dateStr.slice(0, 4), dateStr.slice(4, 6) - 1, dateStr.slice(6, 8))
       const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
       return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${weekdays[date.getDay()]}`
+    }
+
+    const formatDuration = (seconds) => {
+      if (!seconds) return '0:00'
+      const m = Math.floor(seconds / 60)
+      const s = Math.floor(seconds % 60)
+      return `${m}:${s.toString().padStart(2, '0')}`
     }
 
     const loadImages = async () => {
@@ -282,6 +290,16 @@ export default {
 
     const playVideo = () => {
       isPlaying.value = true
+      nextTick(() => {
+        if (videoPlayer.value) {
+          const w = window.innerWidth
+          const h = window.innerHeight
+          videoPlayer.value.style.width = w + 'px'
+          videoPlayer.value.style.height = h + 'px'
+          videoPlayer.value.style.objectFit = 'cover'
+          videoPlayer.value.style.display = 'block'
+        }
+      })
     }
 
     const prevImage = () => {
@@ -334,6 +352,7 @@ export default {
     return {
       router,
       fileInput,
+      videoPlayer,
       isUploading,
       uploadProgress,
       processingStatus,
@@ -357,7 +376,8 @@ export default {
       playVideo,
       prevImage,
       nextImage,
-      loadMore
+      loadMore,
+      formatDuration
     }
   }
 }
@@ -514,20 +534,17 @@ export default {
   object-fit: cover;
 }
 
-.image-item .video-indicator {
+.image-item .video-duration {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.6);
+  bottom: 5px;
+  right: 5px;
+  background: rgba(0, 0, 0, 0.75);
   color: white;
-  border-radius: 50%;
-  width: 50px;
-  height: 50px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .image-item .delete-btn {
@@ -632,6 +649,19 @@ export default {
 
 .video-thumb .play-btn:hover {
   background: rgba(0, 0, 0, 0.85);
+}
+
+.video-thumb .preview-video-duration {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.75);
+  color: white;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .preview-close {
