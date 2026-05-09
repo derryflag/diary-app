@@ -141,18 +141,15 @@ export default {
         const groups = {}
         for (const item of data) {
           const match = item.filename.match(/^(\d{8})\//)
-          const dateKey = match ? match[1] : 'other'
+          const dateKey = match ? match[1] : null
+          if (!dateKey) continue
           if (!groups[dateKey]) {
             groups[dateKey] = []
           }
           groups[dateKey].push(item)
         }
         
-        const sortedKeys = Object.keys(groups).sort((a, b) => {
-          if (a === 'other') return 1
-          if (b === 'other') return -1
-          return b.localeCompare(a)
-        })
+        const sortedKeys = Object.keys(groups).sort((a, b) => b.localeCompare(a))
         
         allGroups.value = sortedKeys.map(key => ({
           dateKey: key,

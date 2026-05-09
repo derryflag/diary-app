@@ -39,11 +39,19 @@ for (const dir of [DATA_DIR, IMAGE_DIR, VIDEO_DIR, THUMBNAIL_DIR]) {
 const IMAGE_TYPES = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
 const VIDEO_TYPES = ['.mp4', '.mov', '.avi', '.mkv', '.webm']
 
+const getDateDir = (filename) => {
+  const match = filename.match(/^(?:IMG|VID)[_-](\d{8})/i)
+  if (match) return match[1]
+  const digits = filename.match(/(\d{8})/)
+  if (digits) return digits[1]
+  const now = new Date()
+  return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase()
-    const match = file.originalname.match(/(\d{8})/)
-    const dateDir = match ? match[1] : 'other'
+    const dateDir = getDateDir(file.originalname)
     const isVideoFile = VIDEO_TYPES.includes(ext)
     const baseDir = isVideoFile ? VIDEO_DIR : IMAGE_DIR
     const targetDir = path.join(baseDir, dateDir)
@@ -203,8 +211,7 @@ app.post('/api/album', upload.single('media'), async (req, res) => {
   }
 
   const ext = path.extname(req.file.originalname).toLowerCase()
-  const match = req.file.originalname.match(/(\d{8})/)
-  const dateDir = match ? match[1] : 'other'
+  const dateDir = getDateDir(req.file.originalname)
   const mediaType = isVideo(req.file.originalname) ? 'video' : 'image'
   const relativePath = `${dateDir}/${req.file.filename}`
 
