@@ -45,10 +45,6 @@
           >
             <img :src="item.thumbnail ? '/thumbnails/' + item.thumbnail : getFullImageUrl(item.filename)" :alt="item.originalName" loading="lazy">
             <div v-if="item.mediaType === 'video'" class="video-duration">{{ formatDuration(item.duration) }}</div>
-            <div class="action-buttons">
-              <button class="download-btn" @click.stop="downloadItem(item)" title="下载">↓</button>
-              <button class="delete-btn" @click.stop="deleteImage(item.id)" title="删除">&times;</button>
-            </div>
           </div>
         </div>
       </div>
@@ -73,6 +69,7 @@
       <div class="preview-info">
         <span>{{ currentImage?.originalName }}</span>
         <button class="preview-download-btn" @click.stop="downloadItem(currentImage)" title="下载">↓ 下载</button>
+        <button class="preview-delete-btn" @click.stop="deleteItemFromPreview(currentImage)" title="删除">× 删除</button>
       </div>
     </div>
   </div>
@@ -168,6 +165,9 @@ export default {
         hasMore.value = allGroups.value.length > INITIAL_LOAD
         
         flattenedImages.value = displayedGroups.value.flatMap(g => g.images)
+        
+        await nextTick()
+        handleScroll()
       } catch (err) {
         console.error('加载图片失败:', err)
       }
@@ -204,18 +204,31 @@ export default {
         return
       }
 
+      const existingNames = new Set(flattenedImages.value.map(item => item.originalName))
+      const newFiles = validFiles.filter(file => !existingNames.has(file.name))
+
+      if (newFiles.length === 0) {
+        alert('这些文件已经上传过了')
+        return
+      }
+
+      if (newFiles.length < validFiles.length) {
+        const skipped = validFiles.length - newFiles.length
+        alert(`已跳过 ${skipped} 个重复文件`)
+      }
+
       isUploading.value = true
       uploadProgress.value = 0
       processingStatus.value = ''
 
-      for (let i = 0; i < validFiles.length; i++) {
-        const file = validFiles[i]
+      for (let i = 0; i < newFiles.length; i++) {
+        const file = newFiles[i]
         const formData = new FormData()
         formData.append('media', file)
 
         const isVideo = file.type.startsWith('video/')
         if (isVideo) {
-          processingStatus.value = `正在上传第 ${i + 1}/${validFiles.length} 个视频...`
+          processingStatus.value = `正在上传第 ${i + 1}/${newFiles.length} 个视频...`
         }
 
         try {
@@ -278,6 +291,23 @@ export default {
       link.href = `/api/album/${item.id}/download`
       link.download = item.originalName
       link.click()
+    }
+
+    const deleteItemFromPreview = async (item) => {
+      if (!item || !confirm('确定要删除这个文件吗？')) return
+      try {
+        const res = await fetch(`/api/album/${item.id}`, {
+          method: 'DELETE'
+        })
+        const result = await res.json()
+        if (result.success) {
+          closePreview()
+          await loadImages()
+        }
+      } catch (err) {
+        console.error('删除失败:', err)
+        alert('删除失败，请重试')
+      }
     }
 
     const openPreview = (item) => {
@@ -384,6 +414,7 @@ export default {
       handleFileSelect,
       deleteImage,
       downloadItem,
+      deleteItemFromPreview,
       openPreview,
       closePreview,
       playVideo,
@@ -514,26 +545,24 @@ export default {
 }
 
 .date-label {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: #333;
-  padding: 10px 0;
-  border-bottom: 2px solid #e0e0e0;
-  margin-bottom: 15px;
+  padding: 8px 0 4px;
+  margin-bottom: 4px;
 }
 
 .images-grid {
   display: grid;
-  gap: 15px;
+  gap: 3px;
 }
 
 .image-item {
   position: relative;
   aspect-ratio: 1;
-  border-radius: 8px;
+  border-radius: 4px;
   overflow: hidden;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   transition: transform 0.3s;
 }
 
@@ -558,47 +587,6 @@ export default {
   font-size: 12px;
   font-weight: 500;
   line-height: 1.4;
-}
-
-.image-item .action-buttons {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.image-item .download-btn,
-.image-item .delete-btn {
-  position: static;
-  background: rgba(0, 0, 0, 0.6);
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  opacity: 0;
-  transition: opacity 0.3s, background 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.image-item:hover .download-btn,
-.image-item:hover .delete-btn {
-  opacity: 1;
-}
-
-.download-btn:hover {
-  background: #5b9bd5;
-}
-
-.image-item .delete-btn {
-  font-size: 16px;
 }
 
 .empty-state {
@@ -755,6 +743,21 @@ export default {
   background: rgba(255, 255, 255, 0.4);
 }
 
+.preview-delete-btn {
+  background: rgba(255, 107, 107, 0.6);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.3s;
+}
+
+.preview-delete-btn:hover {
+  background: rgba(255, 107, 107, 0.9);
+}
+
 @media (max-width: 768px) {
   .album-view {
     padding: 15px;
@@ -824,31 +827,26 @@ export default {
     object-fit: contain;
   }
 
-  .image-item .action-buttons {
-    gap: 4px;
-  }
-
-  .image-item .download-btn,
-  .image-item .delete-btn {
-    width: 22px;
-    height: 22px;
-    font-size: 13px;
-  }
-
-  .image-item .delete-btn {
-    font-size: 15px;
-  }
-
   .preview-info {
     flex-wrap: wrap;
+    justify-content: center;
     bottom: 15px;
     padding: 0 15px;
     font-size: 12px;
+    gap: 20px;
+    width: 100%;
   }
 
   .preview-download-btn {
-    padding: 4px 10px;
-    font-size: 13px;
+    padding: 10px 20px;
+    font-size: 15px;
+    min-width: 80px;
+  }
+
+  .preview-delete-btn {
+    padding: 10px 20px;
+    font-size: 15px;
+    min-width: 80px;
   }
 }
 </style>
