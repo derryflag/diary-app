@@ -3,15 +3,6 @@
     <div class="album-header">
       <button @click="goBack" class="back-btn">去日记</button>
       <h1>灰兔相册</h1>
-      <button @click="triggerFileInput" class="upload-btn">上传</button>
-      <input 
-        ref="fileInput" 
-        type="file" 
-        accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm" 
-        multiple 
-        @change="handleFileSelect"
-        style="display: none"
-      >
     </div>
 
     <div class="column-control">
@@ -72,6 +63,16 @@
         <button class="preview-delete-btn" @click.stop="deleteItemFromPreview(currentImage)" title="删除">× 删除</button>
       </div>
     </div>
+
+    <button class="fab-upload" @click="triggerFileInput" title="上传">上传</button>
+    <input 
+      ref="fileInput" 
+      type="file" 
+      accept="image/jpeg,image/png,image/gif,image/webp,video/mp4,video/quicktime,video/x-msvideo,video/x-matroska,video/webm" 
+      multiple 
+      @change="handleFileSelect"
+      style="display: none"
+    >
   </div>
 </template>
 
@@ -450,22 +451,6 @@ export default {
   font-weight: 600;
 }
 
-.upload-btn {
-  background: linear-gradient(135deg, #85c285, #6bb36b);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  padding: 8px 20px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.3s;
-}
-
-.upload-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(133, 194, 133, 0.4);
-}
-
 .back-btn {
   background: linear-gradient(135deg, #85c285, #6bb36b);
   color: white;
@@ -480,6 +465,32 @@ export default {
 .back-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(133, 194, 133, 0.4);
+}
+
+.fab-upload {
+  position: fixed;
+  bottom: 60px;
+  right: 20px;
+  border-radius: 10px;
+  background: rgba(133, 194, 133, 0.85);
+  color: white;
+  border: none;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(133, 194, 133, 0.5);
+  transition: all 0.3s;
+  z-index: 500;
+  padding: 12px 18px;
+  font-weight: 600;
+}
+
+.fab-upload:hover {
+  background: rgba(107, 179, 107, 0.95);
+  transform: translateY(-2px);
+}
+
+.fab-upload:active {
+  transform: translateY(0);
 }
 
 .loading {

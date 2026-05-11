@@ -150,7 +150,8 @@ const generateCompressedVideo = (filePath, compressedPath) => {
         '-preset', 'ultrafast',
         '-crf', '28',
         '-c:a', 'aac',
-        '-b:a', '96k'
+        '-b:a', '96k',
+        '-movflags', 'faststart'
       ])
       .output(compressedPath)
       .on('end', () => resolve())
