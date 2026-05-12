@@ -3,17 +3,16 @@
     <div class="album-header">
       <button @click="goBack" class="back-btn">去日记</button>
       <h1>灰兔相册</h1>
-    </div>
-
-    <div class="column-control">
-      <span>每行</span>
-      <button 
-        v-for="n in [3, 4, 5]" 
-        :key="n" 
-        :class="{ active: columnCount === n }"
-        @click="columnCount = n"
-      >{{ n }}</button>
-      <span>个</span>
+      <div class="column-control">
+        <span>每行</span>
+        <button 
+          v-for="n in [3, 4, 5]" 
+          :key="n" 
+          :class="{ active: columnCount === n }"
+          @click="columnCount = n"
+        >{{ n }}</button>
+        <span>个</span>
+      </div>
     </div>
 
     <div v-if="isUploading" class="loading">
@@ -45,7 +44,7 @@
       <p>还没有照片，快来上传吧！</p>
     </div>
 
-    <div v-if="showPreview" class="preview-modal" @click="closePreview">
+    <div v-if="showPreview" class="preview-modal" @click="closePreview" @touchstart="onTouchStart" @touchmove="onTouchMove" @touchend="onTouchEnd">
       <button class="preview-close" @click="closePreview">&times;</button>
       <button class="preview-nav prev" @click.stop="prevImage" v-if="flattenedImages.length > 1">&lt;</button>
       <div v-if="currentImage?.mediaType === 'video'" class="video-container" @click.stop>
@@ -100,6 +99,9 @@ export default {
     const hasMore = ref(false)
     const INITIAL_LOAD = 3
     const columnCount = ref(4)
+    const touchStartX = ref(0)
+    const touchStartY = ref(0)
+    const isTouching = ref(false)
     
     const currentImage = computed(() => {
       return flattenedImages.value[currentIndex.value] || null
@@ -266,6 +268,26 @@ export default {
       isUploading.value = false
     }
 
+    const onTouchStart = (e) => {
+      touchStartX.value = e.touches[0].clientX
+      touchStartY.value = e.touches[0].clientY
+      isTouching.value = true
+    }
+
+    const onTouchMove = (e) => {
+      if (!isTouching.value) return
+    }
+
+    const onTouchEnd = (e) => {
+      if (!isTouching.value) return
+      isTouching.value = false
+      const deltaX = e.changedTouches[0].clientX - touchStartX.value
+      const deltaY = e.changedTouches[0].clientY - touchStartY.value
+      if (Math.abs(deltaX) < 50 || Math.abs(deltaX) < Math.abs(deltaY) * 2) return
+      if (deltaX > 0) prevImage()
+      else nextImage()
+    }
+
     const deleteImage = async (id) => {
       if (!confirm('确定要删除这个文件吗？')) return
 
@@ -316,15 +338,22 @@ export default {
       if (!previewHistoryPushed.value) {
         previewHistoryPushed.value = true
         history.pushState({ preview: true }, '')
+        window.location.hash = 'preview'
       }
     }
 
     const closePreview = (fromPopstate = false) => {
       isPlaying.value = false
       showPreview.value = false
-      if (!fromPopstate && previewHistoryPushed.value) {
-        previewHistoryPushed.value = false
-        history.back()
+      if (!fromPopstate) {
+        history.go(-1)
+      }
+      previewHistoryPushed.value = false
+    }
+
+    const handleHashChange = () => {
+      if (showPreview.value && !window.location.hash.endsWith('preview')) {
+        closePreview(true)
       }
     }
 
@@ -357,9 +386,8 @@ export default {
       if (e.key === 'ArrowRight') nextImage()
     }
 
-    const handlePopstate = (e) => {
+    const handlePopstate = () => {
       if (showPreview.value) {
-        e.preventDefault()
         closePreview(true)
       }
     }
@@ -369,12 +397,14 @@ export default {
       window.addEventListener('keydown', handleKeydown)
       window.addEventListener('scroll', handleScroll)
       window.addEventListener('popstate', handlePopstate)
+      window.addEventListener('hashchange', handleHashChange)
     })
 
     onUnmounted(() => {
       window.removeEventListener('keydown', handleKeydown)
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('popstate', handlePopstate)
+      window.removeEventListener('hashchange', handleHashChange)
     })
 
     const handleScroll = () => {
@@ -418,6 +448,9 @@ export default {
       playVideo,
       prevImage,
       nextImage,
+      onTouchStart,
+      onTouchMove,
+      onTouchEnd,
       loadMore,
       formatDuration
     }
@@ -437,7 +470,7 @@ export default {
   align-items: center;
   justify-content: flex-start;
   gap: 15px;
-  margin-bottom: 30px;
+  margin-bottom: 20px;
 }
 
 .album-header h1 {
@@ -502,7 +535,6 @@ export default {
 .column-control {
   display: flex;
   gap: 5px;
-  margin-bottom: 15px;
   justify-content: flex-end;
 }
 

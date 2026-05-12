@@ -137,6 +137,7 @@ Thumbs.db
 
 # Build output
 build/
+dist/
 
 # Data files (not tracked by git)
 server/data/

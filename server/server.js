@@ -249,9 +249,12 @@ app.post('/api/album', upload.single('media'), async (req, res) => {
       thumbnail: `${dateDir}/${thumbFilename}`,
       originalName: req.file.originalname,
       mediaType,
-      videoCompressed,
-      duration,
       uploadTime: new Date().toISOString()
+    }
+
+    if (mediaType === 'video') {
+      newItem.videoCompressed = videoCompressed
+      newItem.duration = duration
     }
     album.unshift(newItem)
     writeAlbum(album)
