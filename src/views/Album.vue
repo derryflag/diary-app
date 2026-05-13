@@ -281,32 +281,36 @@ export default {
           throw new Error(signResult.error || '获取签名失败')
         }
 
-        const { uploadUrl, ossPath, dateDir, mediaType } = signResult.data
+        const { uploadUrl, ossPath, dateDir, mediaType, endpoint } = signResult.data
 
-        await new Promise((resolve, reject) => {
-          const xhr = new XMLHttpRequest()
-          xhr.upload.addEventListener('progress', (e) => {
-            if (e.lengthComputable) {
-              uploadProgress.value = Math.round((e.loaded / e.total) * 20)
-            }
-          })
-          xhr.addEventListener('load', () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-              resolve()
-            } else {
-              reject(new Error('上传失败'))
-            }
-          })
-          xhr.addEventListener('error', () => reject(new Error('上传失败')))
-          xhr.open('PUT', uploadUrl)
-          xhr.setRequestHeader('Content-Type', file.type)
-          xhr.send(file)
+      showProcessingModal.value = true
+      uploadProgress.value = 0
+      processingStatus.value = `正在上传第 ${current}/${total} 个文件... [${endpoint}]`
+
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            uploadProgress.value = Math.round((e.loaded / e.total) * 20)
+          }
         })
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve()
+          } else {
+            reject(new Error('上传失败'))
+          }
+        })
+        xhr.addEventListener('error', () => reject(new Error('上传失败')))
+        xhr.open('PUT', uploadUrl)
+        xhr.setRequestHeader('Content-Type', file.type)
+        xhr.send(file)
+      })
 
-        currentStep.value = isVideo ? 2 : 1
-        processingStatus.value = `第 ${current}/${total} 个文件上传成功，正在处理...`
+      currentStep.value = isVideo ? 2 : 1
+      processingStatus.value = `第 ${current}/${total} 个文件上传成功，正在处理... [${endpoint}]`
 
-        const confirmRes = await fetch('/api/album/confirm', {
+      const confirmRes = await fetch('/api/album/confirm', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -317,15 +321,15 @@ export default {
             fileSize: file.size
           })
         })
-        const confirmResult = await confirmRes.json()
-        if (!confirmResult.success) {
-          throw new Error(confirmResult.error || '确认上传失败')
-        }
+      const confirmResult = await confirmRes.json()
+      if (!confirmResult.success) {
+        throw new Error(confirmResult.error || '确认上传失败')
+      }
 
-        const { taskId } = confirmResult
+      const { taskId } = confirmResult
 
-        await pollTaskStatus(taskId)
-      } catch (err) {
+      await pollTaskStatus(taskId)
+    } catch (err) {
         console.error('上传失败:', err)
         alert(`上传第 ${current} 个文件失败：${err.message}`)
         showProcessingModal.value = false

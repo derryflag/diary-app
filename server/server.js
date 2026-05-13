@@ -232,7 +232,8 @@ app.post('/api/oss/sign', async (req, res) => {
         uploadUrl: url,
         ossPath,
         dateDir,
-        mediaType
+        mediaType,
+        endpoint: ossConfig.endpoint
       }
     })
   } catch (err) {
