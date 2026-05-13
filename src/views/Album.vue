@@ -15,15 +15,23 @@
       </div>
     </div>
 
-    <div v-if="isUploading" class="loading">
-      <div class="upload-status">{{ processingStatus || '上传中...' }}</div>
-      <div class="progress-bar">
-        <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
+    <div v-if="showProcessingModal" class="processing-modal" @click.self="cancelProcessing">
+      <div class="processing-content">
+        <h2>{{ processingStatus || '处理中...' }}</h2>
+        <div class="progress-bar">
+          <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
+        </div>
+        <div class="progress-text">{{ uploadProgress }}%</div>
+        <div class="processing-steps">
+          <div v-for="(step, idx) in processingSteps" :key="idx" 
+               :class="['step', { active: idx === currentStep, done: idx < currentStep }]">
+            {{ step }}
+          </div>
+        </div>
       </div>
-      <div class="progress-text">{{ uploadProgress }}%</div>
     </div>
 
-    <div v-if="displayedGroups.length > 0">
+    <div v-if="displayedGroups.length > 0" @click="onImageClickOutside">
       <div v-for="group in displayedGroups" :key="group.dateKey" class="date-group">
         <div class="date-label">{{ group.label }}</div>
         <div class="images-grid" :style="gridStyle">
@@ -31,13 +39,14 @@
             v-for="(item) in group.images" 
             :key="item.id" 
             class="image-item"
-            @click="openPreview(item)"
+            @click.stop="openPreview(item)"
             @touchstart="onImageTouchStart($event, item)"
             @touchend="onImageTouchEnd"
-            @contextmenu.prevent="longPressDelete(item)"
+            @contextmenu.prevent.stop="onContextMenu($event, item)"
           >
             <img :src="item.ossThumbnailUrl || (item.thumbnail ? '/thumbnails/' + item.thumbnail : '')" :alt="item.originalName" loading="lazy">
             <div v-if="item.mediaType === 'video'" class="video-duration">{{ formatDuration(item.duration) }}</div>
+            <button v-if="item.showDeleteBtn" class="inline-delete-btn" @click.stop="confirmDelete(item)">× 删除</button>
           </div>
         </div>
       </div>
@@ -91,6 +100,10 @@ export default {
     const isUploading = ref(false)
     const uploadProgress = ref(0)
     const processingStatus = ref('')
+    const showProcessingModal = ref(false)
+    const processingSteps = ref([])
+    const currentStep = ref(0)
+    const abortController = ref(null)
     const images = ref([])
     const showPreview = ref(false)
     const isPlaying = ref(false)
@@ -233,60 +246,137 @@ export default {
         alert(`已跳过 ${skipped} 个重复文件`)
       }
 
-      isUploading.value = true
-      uploadProgress.value = 0
-      processingStatus.value = ''
-
       for (let i = 0; i < newFiles.length; i++) {
         const file = newFiles[i]
-        const formData = new FormData()
-        formData.append('media', file)
-
-        const isVideo = file.type.startsWith('video/')
-        if (isVideo) {
-          processingStatus.value = `正在上传第 ${i + 1}/${newFiles.length} 个视频...`
-        }
-
-        try {
-          const uploaded = await new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest()
-            xhr.upload.addEventListener('progress', (e) => {
-              if (e.lengthComputable) {
-                const percent = Math.round((e.loaded / e.total) * 100)
-                uploadProgress.value = percent
-              }
-            })
-            xhr.addEventListener('load', () => {
-              if (xhr.status >= 200 && xhr.status < 300) {
-                resolve(JSON.parse(xhr.responseText))
-              } else {
-                reject(new Error('上传失败'))
-              }
-            })
-            xhr.addEventListener('error', () => reject(new Error('上传失败')))
-            xhr.open('POST', '/api/album')
-            xhr.send(formData)
-          })
-
-          if (uploaded.success && isVideo) {
-            processingStatus.value = `正在处理第 ${i + 1}/${validFiles.length} 个视频...`
-            uploadProgress.value = 100
-          }
-        } catch (err) {
-          console.error('上传失败:', err)
-          alert('上传失败，请重试')
-        }
+        await uploadFileToOSS(file, i + 1, newFiles.length)
       }
 
-      processingStatus.value = ''
-      uploadProgress.value = 0
+      showProcessingModal.value = false
       await loadImages()
-      isUploading.value = false
     }
 
-    const longPressDelete = async (item) => {
-      if (!confirm('确定要删除这个文件吗？')) return
-      await deleteImage(item.id)
+    const uploadFileToOSS = async (file, current, total) => {
+      const isVideo = file.type.startsWith('video/')
+      
+      showProcessingModal.value = true
+      uploadProgress.value = 0
+      processingStatus.value = `正在上传第 ${current}/${total} 个文件...`
+      processingSteps.value = isVideo
+        ? ['上传原视频', '生成缩略图', '上传缩略图', '压缩视频', '上传压缩视频', '获取时长', '保存记录']
+        : ['生成缩略图', '上传缩略图', '保存记录']
+      currentStep.value = 0
+
+      try {
+        const signRes = await fetch('/api/oss/sign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filename: file.name,
+            contentType: file.type,
+            fileSize: file.size
+          })
+        })
+        const signResult = await signRes.json()
+        if (!signResult.success) {
+          throw new Error(signResult.error || '获取签名失败')
+        }
+
+        const { uploadUrl, ossPath, dateDir, mediaType } = signResult.data
+
+        await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest()
+          xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) {
+              uploadProgress.value = Math.round((e.loaded / e.total) * 20)
+            }
+          })
+          xhr.addEventListener('load', () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve()
+            } else {
+              reject(new Error('上传失败'))
+            }
+          })
+          xhr.addEventListener('error', () => reject(new Error('上传失败')))
+          xhr.open('PUT', uploadUrl)
+          xhr.setRequestHeader('Content-Type', file.type)
+          xhr.send(file)
+        })
+
+        currentStep.value = isVideo ? 2 : 1
+        processingStatus.value = `第 ${current}/${total} 个文件上传成功，正在处理...`
+
+        const confirmRes = await fetch('/api/album/confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ossPath,
+            originalName: file.name,
+            dateDir,
+            mediaType,
+            fileSize: file.size
+          })
+        })
+        const confirmResult = await confirmRes.json()
+        if (!confirmResult.success) {
+          throw new Error(confirmResult.error || '确认上传失败')
+        }
+
+        const { taskId } = confirmResult
+
+        await pollTaskStatus(taskId)
+      } catch (err) {
+        console.error('上传失败:', err)
+        alert(`上传第 ${current} 个文件失败：${err.message}`)
+        showProcessingModal.value = false
+      }
+    }
+
+    const pollTaskStatus = async (taskId) => {
+      return new Promise((resolve, reject) => {
+        const poll = async () => {
+          try {
+            const res = await fetch(`/api/album/${taskId}/status`)
+            const result = await res.json()
+            
+            if (result.status === 'completed') {
+              showProcessingModal.value = false
+              resolve()
+              return
+            }
+            
+            if (result.status === 'failed') {
+              showProcessingModal.value = false
+              reject(new Error(result.message || '处理失败'))
+              return
+            }
+
+            uploadProgress.value = result.progress
+            processingStatus.value = result.message
+
+            const stepMap = {
+              '正在下载视频': 0,
+              '正在生成缩略图': 1,
+              '正在上传缩略图': 2,
+              '正在压缩视频': 3,
+              '正在上传压缩视频': 4,
+              '正在获取视频时长': 5,
+              '正在保存记录': 6
+            }
+            for (const [msg, step] of Object.entries(stepMap)) {
+              if (result.message.includes(msg)) {
+                currentStep.value = step
+                break
+              }
+            }
+
+            setTimeout(poll, 1000)
+          } catch (err) {
+            reject(err)
+          }
+        }
+        poll()
+      })
     }
 
     const onImageTouchStart = (e, item) => {
@@ -295,7 +385,7 @@ export default {
       isLongPress.value = false
       longPressTimer.value = setTimeout(() => {
         isLongPress.value = true
-        longPressDelete(item)
+        item.showDeleteBtn = true
       }, 500)
     }
 
@@ -305,6 +395,45 @@ export default {
         longPressTimer.value = null
       }
     }
+
+    const onContextMenu = (e, item) => {
+      e.preventDefault()
+      item.showDeleteBtn = true
+    }
+
+    const confirmDelete = async (item) => {
+      if (!item) return
+      const result = confirm('确定要删除这个文件吗？')
+      item.showDeleteBtn = false
+      if (!result) return
+      await deleteImage(item.id)
+    }
+
+    const hideDeleteBtn = (e) => {
+      if (e.key === 'Escape') {
+        flattenedImages.value.forEach(img => { img.showDeleteBtn = false })
+      }
+    }
+
+    const onImageClickOutside = () => {
+      flattenedImages.value.forEach(img => { img.showDeleteBtn = false })
+    }
+
+    const setupListeners = () => {
+      document.addEventListener('keydown', hideDeleteBtn)
+    }
+
+    const removeListeners = () => {
+      document.removeEventListener('keydown', hideDeleteBtn)
+    }
+
+    onMounted(() => {
+      setupListeners()
+    })
+
+    onUnmounted(() => {
+      removeListeners()
+    })
 
     const onTouchStart = (e) => {
       touchStartX.value = e.touches[0].clientX
@@ -406,14 +535,27 @@ export default {
     }
 
     const openPreview = (item) => {
-      isPlaying.value = false
       const index = flattenedImages.value.findIndex(i => i.id === item.id)
       currentIndex.value = index >= 0 ? index : 0
+      isPlaying.value = item.mediaType === 'video'
       showPreview.value = true
       if (!previewHistoryPushed.value) {
         previewHistoryPushed.value = true
         history.pushState({ preview: true }, '')
         window.location.hash = 'preview'
+      }
+      if (item.mediaType === 'video') {
+        nextTick(() => {
+          if (videoPlayer.value) {
+            const w = window.innerWidth
+            const h = window.innerHeight
+            videoPlayer.value.style.width = w + 'px'
+            videoPlayer.value.style.height = h + 'px'
+            videoPlayer.value.style.objectFit = 'cover'
+            videoPlayer.value.style.display = 'block'
+            videoPlayer.value.play()
+          }
+        })
       }
     }
 
@@ -501,6 +643,9 @@ export default {
       isUploading,
       uploadProgress,
       processingStatus,
+      showProcessingModal,
+      processingSteps,
+      currentStep,
       images,
       displayedGroups,
       flattenedImages,
@@ -530,7 +675,10 @@ export default {
       onTouchEnd,
       onImageTouchStart,
       onImageTouchEnd,
-      longPressDelete,
+      onContextMenu,
+      confirmDelete,
+      onImageClickOutside,
+      hideDeleteBtn,
       loadMore,
       formatDuration
     }
@@ -657,7 +805,99 @@ export default {
 
 .progress-text {
   font-size: 12px;
-  color: #999;
+  color: #666;
+  margin-top: 5px;
+}
+
+.processing-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.processing-content {
+  background: white;
+  padding: 30px;
+  border-radius: 12px;
+  min-width: 300px;
+  max-width: 400px;
+  text-align: center;
+}
+
+.processing-content h2 {
+  margin: 0 0 20px;
+  color: #333;
+  font-size: 16px;
+}
+
+.processing-content .progress-bar {
+  height: 8px;
+  background: #e0e0e0;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.processing-content .progress-fill {
+  height: 100%;
+  background: linear-gradient(135deg, #85c285, #5b9bd5);
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+.processing-content .progress-text {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 20px;
+}
+
+.processing-steps {
+  text-align: left;
+  display: inline-block;
+}
+
+.processing-steps .step {
+  padding: 6px 0;
+  color: #ccc;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+}
+
+.processing-steps .step::before {
+  content: '○';
+  margin-right: 8px;
+  font-size: 14px;
+}
+
+.processing-steps .step.active {
+  color: #5b9bd5;
+  font-weight: 600;
+}
+
+.processing-steps .step.active::before {
+  content: '◉';
+  animation: pulse 1s infinite;
+}
+
+.processing-steps .step.done {
+  color: #85c285;
+}
+
+.processing-steps .step.done::before {
+  content: '✓';
+  font-weight: bold;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .date-group {
@@ -696,6 +936,27 @@ export default {
   object-fit: cover;
 }
 
+.image-item .inline-delete-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 107, 107, 0.9);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+  z-index: 10;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
 .image-item .video-duration {
   position: absolute;
   bottom: 5px;
@@ -709,24 +970,6 @@ export default {
   line-height: 1.4;
 }
 
-.image-item .delete-btn {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  background: rgba(255, 107, 107, 0.85);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 12px;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-
-.image-item:hover .delete-btn {
-  opacity: 1;
-}
 
 .empty-state {
   text-align: center;
@@ -987,12 +1230,6 @@ export default {
     padding: 10px 20px;
     font-size: 15px;
     min-width: 80px;
-  }
-
-  .image-item .delete-btn {
-    opacity: 1;
-    padding: 4px 10px;
-    font-size: 13px;
   }
 }
 </style>
