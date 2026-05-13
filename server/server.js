@@ -8,7 +8,7 @@ import multer from 'multer'
 import { v4 as uuidv4 } from 'uuid'
 import sharp from 'sharp'
 import ffmpeg from 'fluent-ffmpeg'
-import ossClient, { ossConfig } from './oss.js'
+import ossClient, { ossConfig, publicClient } from './oss.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -219,7 +219,7 @@ app.post('/api/oss/sign', async (req, res) => {
     const ossDataDir = ossConfig.dataDir
 
     const ossPath = `${ossDataDir}/${mediaType === 'video' ? 'video' : 'thumbnail'}/${dateDir}/${filename}`
-    const url = ossClient.signatureUrl(ossPath, {
+    const url = publicClient.signatureUrl(ossPath, {
       method: 'PUT',
       expires: 300,
       contentType,
@@ -233,7 +233,7 @@ app.post('/api/oss/sign', async (req, res) => {
         ossPath,
         dateDir,
         mediaType,
-        endpoint: ossConfig.endpoint
+        endpoint: ossConfig.publicEndpoint
       }
     })
   } catch (err) {

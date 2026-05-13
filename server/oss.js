@@ -18,4 +18,13 @@ const client = new OSS({
   endpoint: ossConfig.endpoint
 })
 
+const publicClient = new OSS({
+  region: ossConfig.region,
+  accessKeyId: ossConfig.accessKeyId,
+  accessKeySecret: ossConfig.accessKeySecret,
+  bucket: ossConfig.bucket,
+  endpoint: ossConfig.publicEndpoint
+})
+
 export default client
+export { publicClient }
