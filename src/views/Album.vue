@@ -32,8 +32,11 @@
             :key="item.id" 
             class="image-item"
             @click="openPreview(item)"
+            @touchstart="onImageTouchStart($event, item)"
+            @touchend="onImageTouchEnd"
+            @contextmenu.prevent="longPressDelete(item)"
           >
-            <img :src="item.thumbnail ? '/thumbnails/' + item.thumbnail : getFullImageUrl(item.filename)" :alt="item.originalName" loading="lazy">
+            <img :src="item.ossThumbnailUrl || (item.thumbnail ? '/thumbnails/' + item.thumbnail : '')" :alt="item.originalName" loading="lazy">
             <div v-if="item.mediaType === 'video'" class="video-duration">{{ formatDuration(item.duration) }}</div>
           </div>
         </div>
@@ -49,17 +52,17 @@
       <button class="preview-nav prev" @click.stop="prevImage" v-if="flattenedImages.length > 1">&lt;</button>
       <div v-if="currentImage?.mediaType === 'video'" class="video-container" @click.stop>
         <div v-if="!isPlaying" class="video-thumb" @click="playVideo">
-          <img :src="'/thumbnails/' + currentImage.thumbnail" :alt="currentImage.originalName">
+          <img :src="currentImage?.ossThumbnailUrl || ('/thumbnails/' + currentImage.thumbnail)" :alt="currentImage.originalName">
           <div class="preview-video-duration">{{ formatDuration(currentImage.duration) }}</div>
         </div>
-        <video v-else ref="videoPlayer" :src="'/videos/' + (currentImage.videoCompressed || currentImage.filename)" controls autoplay playsinline webkit-playsinline x5-video-player-type="h5" x5-video-player-fullscreen="true" x5-playsinline></video>
+        <video v-else ref="videoPlayer" :src="getVideoSrc(currentImage)" controls autoplay playsinline webkit-playsinline x5-video-player-type="h5" x5-video-player-fullscreen="true" x5-playsinline></video>
       </div>
-      <img v-else :src="currentImage?.thumbnail ? '/thumbnails/' + currentImage.thumbnail : getFullImageUrl(currentImage?.filename)" :alt="currentImage?.originalName" @click.stop>
+      <img v-else :src="currentImage?.ossThumbnailUrl || (currentImage?.thumbnail ? '/thumbnails/' + currentImage.thumbnail : '')" :alt="currentImage?.originalName" @click.stop>
       <button class="preview-nav next" @click.stop="nextImage" v-if="flattenedImages.length > 1">&gt;</button>
       <div class="preview-info">
         <span>{{ currentImage?.originalName }}</span>
         <button class="preview-download-btn" @click.stop="downloadItem(currentImage)" title="下载">↓ 下载</button>
-        <button class="preview-delete-btn" @click.stop="deleteItemFromPreview(currentImage)" title="删除">× 删除</button>
+        <button class="preview-delete-btn" @click.stop="deleteCurrentItem" title="删除">× 删除</button>
       </div>
     </div>
 
@@ -102,6 +105,8 @@ export default {
     const touchStartX = ref(0)
     const touchStartY = ref(0)
     const isTouching = ref(false)
+    const longPressTimer = ref(null)
+    const isLongPress = ref(false)
     
     const currentImage = computed(() => {
       return flattenedImages.value[currentIndex.value] || null
@@ -120,6 +125,17 @@ export default {
 
     const getFullImageUrl = (filename) => {
       return `/uploads/${filename}`
+    }
+
+    const getVideoSrc = (item) => {
+      if (!item) return ''
+      if (item.ossCompressedUrl) {
+        return item.ossCompressedUrl
+      }
+      if (item.ossVideoUrl) {
+        return item.ossVideoUrl
+      }
+      return item.ossUrl || `/videos/${item.filename}`
     }
 
     const formatDateGroup = (dateStr) => {
@@ -268,6 +284,28 @@ export default {
       isUploading.value = false
     }
 
+    const longPressDelete = async (item) => {
+      if (!confirm('确定要删除这个文件吗？')) return
+      await deleteImage(item.id)
+    }
+
+    const onImageTouchStart = (e, item) => {
+      touchStartX.value = e.touches[0].clientX
+      touchStartY.value = e.touches[0].clientY
+      isLongPress.value = false
+      longPressTimer.value = setTimeout(() => {
+        isLongPress.value = true
+        longPressDelete(item)
+      }, 500)
+    }
+
+    const onImageTouchEnd = () => {
+      if (longPressTimer.value) {
+        clearTimeout(longPressTimer.value)
+        longPressTimer.value = null
+      }
+    }
+
     const onTouchStart = (e) => {
       touchStartX.value = e.touches[0].clientX
       touchStartY.value = e.touches[0].clientY
@@ -298,6 +336,8 @@ export default {
         const result = await res.json()
         if (result.success) {
           await loadImages()
+        } else {
+          alert(result.error || '删除失败')
         }
       } catch (err) {
         console.error('删除失败:', err)
@@ -305,12 +345,20 @@ export default {
       }
     }
 
-    const downloadItem = (item) => {
+    const downloadItem = async (item) => {
       if (!item) return
-      const link = document.createElement('a')
-      link.href = `/api/album/${item.id}/download`
-      link.download = item.originalName
-      link.click()
+      try {
+        const res = await fetch(`/api/album/${item.id}/download`)
+        const result = await res.json()
+        if (result.downloadUrl) {
+          const link = document.createElement('a')
+          link.href = result.downloadUrl
+          link.download = item.originalName
+          link.click()
+        }
+      } catch (err) {
+        console.error('获取下载链接失败:', err)
+      }
     }
 
     const deleteItemFromPreview = async (item) => {
@@ -323,6 +371,33 @@ export default {
         if (result.success) {
           closePreview()
           await loadImages()
+        } else {
+          alert(result.error || '删除失败')
+          return
+        }
+      } catch (err) {
+        console.error('删除失败:', err)
+        alert('删除失败，请重试')
+        return
+      }
+      closePreview()
+      await loadImages()
+    }
+
+    const deleteCurrentItem = async () => {
+      const item = flattenedImages.value[currentIndex.value]
+      if (!item) return
+      if (!confirm('确定要删除这个文件吗？')) return
+      try {
+        const res = await fetch(`/api/album/${item.id}`, {
+          method: 'DELETE'
+        })
+        const result = await res.json()
+        if (result.success) {
+          if (showPreview.value) closePreview()
+          await loadImages()
+        } else {
+          alert(result.error || '删除失败')
         }
       } catch (err) {
         console.error('删除失败:', err)
@@ -443,6 +518,8 @@ export default {
       deleteImage,
       downloadItem,
       deleteItemFromPreview,
+      deleteCurrentItem,
+      getVideoSrc,
       openPreview,
       closePreview,
       playVideo,
@@ -451,6 +528,9 @@ export default {
       onTouchStart,
       onTouchMove,
       onTouchEnd,
+      onImageTouchStart,
+      onImageTouchEnd,
+      longPressDelete,
       loadMore,
       formatDuration
     }
@@ -629,6 +709,25 @@ export default {
   line-height: 1.4;
 }
 
+.image-item .delete-btn {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: rgba(255, 107, 107, 0.85);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.image-item:hover .delete-btn {
+  opacity: 1;
+}
+
 .empty-state {
   text-align: center;
   padding: 60px;
@@ -766,6 +865,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 15px;
+  z-index: 1002;
 }
 
 .preview-download-btn {
@@ -887,6 +987,12 @@ export default {
     padding: 10px 20px;
     font-size: 15px;
     min-width: 80px;
+  }
+
+  .image-item .delete-btn {
+    opacity: 1;
+    padding: 4px 10px;
+    font-size: 13px;
   }
 }
 </style>

@@ -7,6 +7,7 @@ import multer from 'multer'
 import { v4 as uuidv4 } from 'uuid'
 import sharp from 'sharp'
 import ffmpeg from 'fluent-ffmpeg'
+import ossClient from './oss.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -215,6 +216,7 @@ app.post('/api/album', upload.single('media'), async (req, res) => {
   const dateDir = getDateDir(req.file.originalname)
   const mediaType = isVideo(req.file.originalname) ? 'video' : 'image'
   const relativePath = `${dateDir}/${req.file.filename}`
+  const ossDataDir = process.env.OSS_DATA_DIR || 'data'
 
   try {
     const thumbDir = path.join(THUMBNAIL_DIR, dateDir)
@@ -232,14 +234,52 @@ app.post('/api/album', upload.single('media'), async (req, res) => {
       await generateImageThumbnail(req.file.path, thumbPath)
     }
 
-    let videoCompressed = null
     let duration = null
+    let ossVideoUrl = null
+    let ossVideoPath = null
+    let ossCompressedUrl = null
+    let ossCompressedPath = null
+    let ossThumbnailUrl = null
+    let ossThumbnailPath = null
+
     if (mediaType === 'video') {
+      ossVideoPath = `${ossDataDir}/video/${dateDir}/${req.file.filename}`
+      const ossVideoResult = await ossClient.put(ossVideoPath, req.file.path)
+      ossVideoUrl = ossVideoResult.url
+
       const compressedFilename = req.file.filename.replace(ext, '_720p.mp4')
       const compressedPath = path.join(VIDEO_DIR, dateDir, compressedFilename)
       await generateCompressedVideo(req.file.path, compressedPath)
-      videoCompressed = `${dateDir}/${compressedFilename}`
+      
+      ossCompressedPath = `${ossDataDir}/video/${dateDir}/${compressedFilename}`
+      const ossCompressedResult = await ossClient.put(ossCompressedPath, compressedPath)
+      ossCompressedUrl = ossCompressedResult.url
+      
+      if (fs.existsSync(compressedPath)) {
+        fs.unlinkSync(compressedPath)
+      }
+
+      ossThumbnailPath = `${ossDataDir}/thumbnail/${dateDir}/${thumbFilename}`
+      const ossThumbResult = await ossClient.put(ossThumbnailPath, thumbPath)
+      ossThumbnailUrl = ossThumbResult.url
+
+      if (fs.existsSync(thumbPath)) {
+        fs.unlinkSync(thumbPath)
+      }
+
       duration = await getVideoDuration(req.file.path)
+    } else {
+      ossThumbnailPath = `${ossDataDir}/thumbnail/${dateDir}/${thumbFilename}`
+      const ossThumbResult = await ossClient.put(ossThumbnailPath, thumbPath)
+      ossThumbnailUrl = ossThumbResult.url
+
+      if (fs.existsSync(thumbPath)) {
+        fs.unlinkSync(thumbPath)
+      }
+    }
+
+    if (fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path)
     }
 
     const album = readAlbum()
@@ -253,8 +293,16 @@ app.post('/api/album', upload.single('media'), async (req, res) => {
     }
 
     if (mediaType === 'video') {
-      newItem.videoCompressed = videoCompressed
       newItem.duration = duration
+      newItem.ossVideoUrl = ossVideoUrl
+      newItem.ossVideoPath = ossVideoPath
+      newItem.ossCompressedUrl = ossCompressedUrl
+      newItem.ossCompressedPath = ossCompressedPath
+      newItem.ossThumbnailUrl = ossThumbnailUrl
+      newItem.ossThumbnailPath = ossThumbnailPath
+    } else {
+      newItem.ossThumbnailUrl = ossThumbnailUrl
+      newItem.ossThumbnailPath = ossThumbnailPath
     }
     album.unshift(newItem)
     writeAlbum(album)
@@ -266,45 +314,77 @@ app.post('/api/album', upload.single('media'), async (req, res) => {
   }
 })
 
-app.delete('/api/album/:id', (req, res) => {
+app.delete('/api/album/:id', async (req, res) => {
   const { id } = req.params
   let album = readAlbum()
   const item = album.find(a => a.id === id)
 
-  if (item) {
-    const baseDir = item.mediaType === 'video' ? VIDEO_DIR : IMAGE_DIR
-    const filePath = path.join(baseDir, item.filename)
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath)
-    }
-
-    if (item.thumbnail) {
-      const thumbPath = path.join(THUMBNAIL_DIR, item.thumbnail)
-      if (fs.existsSync(thumbPath)) {
-        fs.unlinkSync(thumbPath)
-      }
-    }
-
-    if (item.videoCompressed) {
-      const compressedPath = path.join(VIDEO_DIR, item.videoCompressed)
-      if (fs.existsSync(compressedPath)) {
-        fs.unlinkSync(compressedPath)
-      }
-    }
-
-    for (const dir of [baseDir, THUMBNAIL_DIR]) {
-      const dateDir = path.join(dir, item.filename.split('/')[0])
-      if (fs.existsSync(dateDir) && fs.readdirSync(dateDir).length === 0) {
-        fs.rmdirSync(dateDir)
-      }
-    }
-
-    album = album.filter(a => a.id !== id)
-    writeAlbum(album)
-    res.json({ success: true })
-  } else {
-    res.status(404).json({ error: '文件不存在' })
+  if (!item) {
+    return res.status(404).json({ error: '文件不存在' })
   }
+
+  const dateDir = item.filename.split('/')[0]
+
+  if (item.mediaType === 'video') {
+    const ossFilesToDelete = [item.ossVideoPath, item.ossCompressedPath, item.ossThumbnailPath].filter(Boolean)
+    for (const ossPath of ossFilesToDelete) {
+      try {
+        await ossClient.delete(ossPath)
+        console.log(`已删除 OSS 文件：${ossPath}`)
+      } catch (err) {
+        console.error(`删除 OSS 文件失败：${ossPath} - ${err.message}`)
+        return res.status(500).json({
+          error: `删除失败：OSS 文件删除失败（${ossPath} - ${err.message}）`,
+          stage: 'oss'
+        })
+      }
+    }
+  } else {
+    if (item.ossThumbnailPath) {
+      try {
+        await ossClient.delete(item.ossThumbnailPath)
+        console.log(`已删除 OSS 缩略图：${item.ossThumbnailPath}`)
+      } catch (err) {
+        console.error(`删除 OSS 缩略图失败：${err.message}`)
+        return res.status(500).json({
+          error: `删除失败：OSS 缩略图删除失败（${err.message}）`,
+          stage: 'oss_thumbnail'
+        })
+      }
+    }
+  }
+
+  if (item.thumbnail) {
+    const thumbPath = path.join(THUMBNAIL_DIR, item.thumbnail)
+    if (fs.existsSync(thumbPath)) {
+      try {
+        fs.unlinkSync(thumbPath)
+        console.log(`已删除本地缩略图：${thumbPath}`)
+      } catch (err) {
+        console.error(`删除本地缩略图失败：${err.message}`)
+        return res.status(500).json({
+          error: `删除失败：本地缩略图文件删除失败（${err.message}）`,
+          stage: 'thumbnail'
+        })
+      }
+    }
+  }
+
+  for (const dir of [VIDEO_DIR, IMAGE_DIR, THUMBNAIL_DIR]) {
+    const dateDirPath = path.join(dir, dateDir)
+    if (fs.existsSync(dateDirPath) && fs.readdirSync(dateDirPath).length === 0) {
+      try {
+        fs.rmdirSync(dateDirPath)
+        console.log(`已清理空目录：${dateDirPath}`)
+      } catch (err) {
+        console.error(`清理空目录失败：${err.message}`)
+      }
+    }
+  }
+
+  album = album.filter(a => a.id !== id)
+  writeAlbum(album)
+  res.json({ success: true })
 })
 
 app.get('/api/album/:id/download', (req, res) => {
@@ -316,21 +396,15 @@ app.get('/api/album/:id/download', (req, res) => {
     return res.status(404).json({ error: '文件不存在' })
   }
 
-  if (item.mediaType === 'video') {
-    const filePath = item.videoCompressed
-      ? path.join(VIDEO_DIR, item.videoCompressed)
-      : path.join(VIDEO_DIR, item.filename)
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: '文件不存在' })
-    }
-    res.download(filePath, item.originalName)
-  } else {
-    const filePath = path.join(IMAGE_DIR, item.filename)
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: '文件不存在' })
-    }
-    res.download(filePath, item.originalName)
+  const downloadUrl = item.mediaType === 'video'
+    ? (item.ossCompressedUrl || item.ossVideoUrl)
+    : (item.ossThumbnailUrl)
+
+  if (!downloadUrl) {
+    return res.status(404).json({ error: '文件不存在' })
   }
+
+  res.json({ downloadUrl })
 })
 
 app.use('/uploads', express.static(IMAGE_DIR))
