@@ -311,14 +311,14 @@ const processVideoAsync = async (taskId, ossPath, originalName, dateDir) => {
   const ossDataDir = ossConfig.dataDir
   const ext = path.extname(originalName).toLowerCase()
   const isVideoFile = isVideo(originalName)
-
+  const ossEndpoint = ossConfig.endpoint || 'unknown'
   const downloadPath = path.join(PROCESSING_DIR, originalName)
 
   try {
     if (isVideoFile) {
       // Step 1: Download from OSS
       task.progress = 10
-      task.message = '正在下载视频...'
+      task.message = `正在下载视频... [${ossEndpoint}]`
       console.log(`[${taskId}] 下载视频: ${ossPath}`)
       await ossClient.get(ossPath, downloadPath)
 
@@ -336,7 +336,7 @@ const processVideoAsync = async (taskId, ossPath, originalName, dateDir) => {
 
       // Step 3: Upload thumbnail to OSS
       task.progress = 40
-      task.message = '正在上传缩略图...'
+      task.message = `正在上传缩略图... [${ossEndpoint}]`
       const ossThumbnailPath = `${ossDataDir}/thumbnail/${dateDir}/${thumbFilename}`
       const ossThumbResult = await ossClient.put(ossThumbnailPath, thumbPath)
       if (fs.existsSync(thumbPath)) {
@@ -352,7 +352,7 @@ const processVideoAsync = async (taskId, ossPath, originalName, dateDir) => {
 
       // Step 5: Upload compressed video to OSS
       task.progress = 80
-      task.message = '正在上传压缩视频...'
+      task.message = `正在上传压缩视频... [${ossEndpoint}]`
       const ossCompressedPath = `${ossDataDir}/video/${dateDir}/${compressedFilename}`
       const ossCompressedResult = await ossClient.put(ossCompressedPath, compressedPath)
       if (fs.existsSync(compressedPath)) {
@@ -409,7 +409,7 @@ const processVideoAsync = async (taskId, ossPath, originalName, dateDir) => {
       await generateImageThumbnail(downloadPath, thumbPath)
 
       task.progress = 40
-      task.message = '正在上传缩略图...'
+      task.message = `正在上传缩略图... [${ossEndpoint}]`
       const ossThumbnailPath = `${ossDataDir}/thumbnail/${dateDir}/${thumbFilename}`
       const ossThumbResult = await ossClient.put(ossThumbnailPath, thumbPath)
       if (fs.existsSync(thumbPath)) {

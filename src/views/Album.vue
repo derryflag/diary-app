@@ -826,15 +826,22 @@ export default {
   background: white;
   padding: 30px;
   border-radius: 12px;
-  min-width: 300px;
-  max-width: 400px;
+  width: 360px;
+  min-height: 280px;
   text-align: center;
 }
 
 .processing-content h2 {
   margin: 0 0 20px;
   color: #333;
-  font-size: 16px;
+  font-size: 15px;
+  line-height: 1.5;
+  word-break: break-all;
+  white-space: normal;
+  min-height: 45px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .processing-content .progress-bar {
