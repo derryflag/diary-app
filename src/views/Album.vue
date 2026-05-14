@@ -66,7 +66,7 @@
         </div>
         <video v-else ref="videoPlayer" :src="getVideoSrc(currentImage)" controls autoplay playsinline webkit-playsinline x5-video-player-type="h5" x5-video-player-fullscreen="true" x5-playsinline></video>
       </div>
-      <img v-else :src="currentImage?.ossThumbnailUrl || (currentImage?.thumbnail ? '/thumbnails/' + currentImage.thumbnail : '')" :alt="currentImage?.originalName" @click.stop>
+      <img v-else :src="getImageSrc(currentImage)" :alt="currentImage?.originalName" @click.stop>
       <button class="preview-nav next" @click.stop="nextImage" v-if="flattenedImages.length > 1">&gt;</button>
       <div class="preview-info">
         <span>{{ currentImage?.originalName }}</span>
@@ -138,6 +138,14 @@ export default {
       return `/uploads/${filename}`
     }
 
+    const getImageSrc = (item) => {
+      if (!item) return ''
+      if (item.ossUrl) {
+        return item.ossUrl
+      }
+      return `/uploads/${item.filename}`
+    }
+
     const getVideoSrc = (item) => {
       if (!item) return ''
       if (item.ossCompressedUrl) {
@@ -146,7 +154,7 @@ export default {
       if (item.ossVideoUrl) {
         return item.ossVideoUrl
       }
-      return item.ossUrl || `/videos/${item.filename}`
+      return `/videos/${item.filename}`
     }
 
     const formatDateGroup = (dateStr) => {
@@ -260,74 +268,108 @@ export default {
       uploadProgress.value = 0
       processingStatus.value = `正在上传第 ${current}/${total} 个文件...`
       processingSteps.value = isVideo
-        ? ['上传原视频', '生成缩略图', '上传缩略图', '压缩视频', '上传压缩视频', '获取时长', '保存记录']
-        : ['生成缩略图', '上传缩略图', '保存记录']
+        ? ['上传原视频', '生成缩略图', '压缩视频', '获取时长', '保存记录']
+        : ['上传图片', '生成缩略图', '保存记录']
       currentStep.value = 0
 
       try {
-        const signRes = await fetch('/api/oss/sign', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            filename: file.name,
-            contentType: file.type,
-            fileSize: file.size
+        if (!isVideo) {
+          // Image: upload directly to local server
+          const formData = new FormData()
+          formData.append('file', file)
+
+          const uploadPromise = new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest()
+            xhr.upload.addEventListener('progress', (e) => {
+              if (e.lengthComputable) {
+                uploadProgress.value = Math.round((e.loaded / e.total) * 30)
+              }
+            })
+            xhr.addEventListener('load', () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                const result = JSON.parse(xhr.responseText)
+                resolve(result)
+              } else {
+                reject(new Error('上传失败'))
+              }
+            })
+            xhr.addEventListener('error', () => reject(new Error('上传失败')))
+            xhr.open('POST', '/api/album/upload')
+            xhr.send(formData)
           })
-        })
-        const signResult = await signRes.json()
-        if (!signResult.success) {
-          throw new Error(signResult.error || '获取签名失败')
+
+          const uploadResult = await uploadPromise
+          currentStep.value = 1
+          processingStatus.value = `第 ${current}/${total} 个文件上传成功，正在处理...`
+
+          if (uploadResult.taskId) {
+            await pollTaskStatus(uploadResult.taskId)
+          }
+        } else {
+          // Video: upload to OSS first, then process
+          const signRes = await fetch('/api/oss/sign', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: file.name,
+              contentType: file.type,
+              fileSize: file.size
+            })
+          })
+          const signResult = await signRes.json()
+          if (!signResult.success) {
+            throw new Error(signResult.error || '获取签名失败')
+          }
+
+          const { uploadUrl, ossPath, dateDir, mediaType, endpoint } = signResult.data
+
+          showProcessingModal.value = true
+          uploadProgress.value = 0
+          processingStatus.value = `正在上传第 ${current}/${total} 个文件... [${endpoint}]`
+
+          await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest()
+            xhr.upload.addEventListener('progress', (e) => {
+              if (e.lengthComputable) {
+                uploadProgress.value = Math.round((e.loaded / e.total) * 20)
+              }
+            })
+            xhr.addEventListener('load', () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                resolve()
+              } else {
+                reject(new Error('上传失败'))
+              }
+            })
+            xhr.addEventListener('error', () => reject(new Error('上传失败')))
+            xhr.open('PUT', uploadUrl)
+            xhr.setRequestHeader('Content-Type', file.type)
+            xhr.send(file)
+          })
+
+          currentStep.value = 2
+          processingStatus.value = `第 ${current}/${total} 个文件上传成功，正在处理... [${endpoint}]`
+
+          const confirmRes = await fetch('/api/album/confirm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ossPath,
+              originalName: file.name,
+              dateDir,
+              mediaType,
+              fileSize: file.size
+            })
+          })
+          const confirmResult = await confirmRes.json()
+          if (!confirmResult.success) {
+            throw new Error(confirmResult.error || '确认上传失败')
+          }
+
+          const { taskId } = confirmResult
+          await pollTaskStatus(taskId)
         }
-
-        const { uploadUrl, ossPath, dateDir, mediaType, endpoint } = signResult.data
-
-      showProcessingModal.value = true
-      uploadProgress.value = 0
-      processingStatus.value = `正在上传第 ${current}/${total} 个文件... [${endpoint}]`
-
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            uploadProgress.value = Math.round((e.loaded / e.total) * 20)
-          }
-        })
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve()
-          } else {
-            reject(new Error('上传失败'))
-          }
-        })
-        xhr.addEventListener('error', () => reject(new Error('上传失败')))
-        xhr.open('PUT', uploadUrl)
-        xhr.setRequestHeader('Content-Type', file.type)
-        xhr.send(file)
-      })
-
-      currentStep.value = isVideo ? 2 : 1
-      processingStatus.value = `第 ${current}/${total} 个文件上传成功，正在处理... [${endpoint}]`
-
-      const confirmRes = await fetch('/api/album/confirm', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ossPath,
-            originalName: file.name,
-            dateDir,
-            mediaType,
-            fileSize: file.size
-          })
-        })
-      const confirmResult = await confirmRes.json()
-      if (!confirmResult.success) {
-        throw new Error(confirmResult.error || '确认上传失败')
-      }
-
-      const { taskId } = confirmResult
-
-      await pollTaskStatus(taskId)
-    } catch (err) {
+      } catch (err) {
         console.error('上传失败:', err)
         alert(`上传第 ${current} 个文件失败：${err.message}`)
         showProcessingModal.value = false
@@ -458,8 +500,6 @@ export default {
     }
 
     const deleteImage = async (id) => {
-      if (!confirm('确定要删除这个文件吗？')) return
-
       try {
         const res = await fetch(`/api/album/${id}`, {
           method: 'DELETE'
@@ -479,16 +519,23 @@ export default {
     const downloadItem = async (item) => {
       if (!item) return
       try {
-        const res = await fetch(`/api/album/${item.id}/download`)
-        const result = await res.json()
-        if (result.downloadUrl) {
+        if (item.mediaType === 'image' && item.filename) {
           const link = document.createElement('a')
-          link.href = result.downloadUrl
+          link.href = `/uploads/${item.filename}`
           link.download = item.originalName
           link.click()
+        } else if (item.mediaType === 'video') {
+          const res = await fetch(`/api/album/${item.id}/download`)
+          const result = await res.json()
+          if (result.downloadUrl) {
+            const link = document.createElement('a')
+            link.href = result.downloadUrl
+            link.download = item.originalName
+            link.click()
+          }
         }
       } catch (err) {
-        console.error('获取下载链接失败:', err)
+        console.error('下载失败:', err)
       }
     }
 

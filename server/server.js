@@ -242,6 +242,46 @@ app.post('/api/oss/sign', async (req, res) => {
   }
 })
 
+app.post('/api/album/upload', upload.single('file'), async (req, res) => {
+  try {
+    const file = req.file
+    if (!file) {
+      return res.status(400).json({ error: '缺少文件' })
+    }
+
+    const taskId = uuidv4()
+    const ext = path.extname(file.originalname).toLowerCase()
+    const dateDir = getDateDir(file.originalname)
+    const isVideoFile = isVideo(file.originalname)
+
+    processingTasks.set(taskId, {
+      id: taskId,
+      status: 'processing',
+      progress: 0,
+      message: '正在处理...',
+      filePath: file.path,
+      originalName: file.originalname,
+      dateDir,
+      mediaType: isVideoFile ? 'video' : 'image',
+      createdAt: new Date().toISOString()
+    })
+
+    processMediaAsync(taskId, file.path, file.originalname, dateDir, isVideoFile).catch(err => {
+      console.error(`异步处理任务 ${taskId} 失败:`, err)
+      const task = processingTasks.get(taskId)
+      if (task) {
+        task.status = 'failed'
+        task.error = err.message
+      }
+    })
+
+    res.json({ success: true, taskId })
+  } catch (err) {
+    console.error('上传失败:', err)
+    res.status(500).json({ error: '上传失败' })
+  }
+})
+
 app.post('/api/album/confirm', async (req, res) => {
   const { ossPath, originalName, dateDir, mediaType, fileSize } = req.body
   if (!ossPath || !originalName) {
@@ -304,6 +344,127 @@ app.get('/api/album/:taskId/status', (req, res) => {
     })
   }
 })
+
+const processMediaAsync = async (taskId, filePath, originalName, dateDir, isVideoFile) => {
+  const task = processingTasks.get(taskId)
+  if (!task) return
+
+  const ext = path.extname(originalName).toLowerCase()
+
+  try {
+    if (isVideoFile) {
+      // Video: compress and generate thumbnail
+      task.progress = 10
+      task.message = '正在生成缩略图...'
+      const prefix = 'VID_'
+      const thumbFilename = `${prefix}${originalName.replace(ext, '.jpg')}`
+      const thumbDir = path.join(THUMBNAIL_DIR, dateDir)
+      if (!fs.existsSync(thumbDir)) {
+        fs.mkdirSync(thumbDir, { recursive: true })
+      }
+      const thumbPath = path.join(thumbDir, thumbFilename)
+      await generateVideoThumbnail(filePath, thumbPath)
+
+      // Compress video
+      task.progress = 50
+      task.message = '正在压缩视频...'
+      const compressedFilename = originalName.replace(ext, '_720p.mp4')
+      const compressedPath = path.join(PROCESSING_DIR, compressedFilename)
+      await generateCompressedVideo(filePath, compressedPath)
+
+      // Move compressed video to video directory
+      const videoDir = path.join(VIDEO_DIR, dateDir)
+      if (!fs.existsSync(videoDir)) {
+        fs.mkdirSync(videoDir, { recursive: true })
+      }
+      const finalVideoPath = path.join(videoDir, compressedFilename)
+      fs.renameSync(compressedPath, finalVideoPath)
+
+      // Get video duration
+      task.progress = 90
+      task.message = '正在获取视频时长...'
+      const duration = await getVideoDuration(filePath)
+
+      // Clean up original file
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath)
+      }
+
+      // Save to album
+      task.progress = 95
+      task.message = '正在保存记录...'
+      const album = readAlbum()
+      const newItem = {
+        id: uuidv4(),
+        filename: `${dateDir}/${compressedFilename}`,
+        thumbnail: `${dateDir}/${thumbFilename}`,
+        originalName,
+        mediaType: 'video',
+        uploadTime: new Date().toISOString(),
+        duration
+      }
+      album.unshift(newItem)
+      writeAlbum(album)
+
+      task.status = 'completed'
+      task.progress = 100
+      task.message = '处理完成'
+      task.data = newItem
+      console.log(`[${taskId}] 视频处理完成: ${originalName}`)
+    } else {
+      // Image: generate thumbnail and keep original
+      task.progress = 10
+      task.message = '正在生成缩略图...'
+      const prefix = 'IMG_'
+      const thumbFilename = `${prefix}${originalName.replace(ext, '.jpg')}`
+      const thumbDir = path.join(THUMBNAIL_DIR, dateDir)
+      if (!fs.existsSync(thumbDir)) {
+        fs.mkdirSync(thumbDir, { recursive: true })
+      }
+      const thumbPath = path.join(thumbDir, thumbFilename)
+      await generateImageThumbnail(filePath, thumbPath)
+
+      // Move original to album directory
+      const albumDir = path.join(IMAGE_DIR, dateDir)
+      if (!fs.existsSync(albumDir)) {
+        fs.mkdirSync(albumDir, { recursive: true })
+      }
+      const finalImagePath = path.join(albumDir, originalName)
+      fs.renameSync(filePath, finalImagePath)
+
+      // Save to album
+      task.progress = 95
+      task.message = '正在保存记录...'
+      const album = readAlbum()
+      const newItem = {
+        id: uuidv4(),
+        filename: `${dateDir}/${originalName}`,
+        thumbnail: `${dateDir}/${thumbFilename}`,
+        originalName,
+        mediaType: 'image',
+        uploadTime: new Date().toISOString()
+      }
+      album.unshift(newItem)
+      writeAlbum(album)
+
+      task.status = 'completed'
+      task.progress = 100
+      task.message = '处理完成'
+      task.data = newItem
+      console.log(`[${taskId}] 图片处理完成: ${originalName}`)
+    }
+  } catch (err) {
+    console.error(`[${taskId}] 处理失败:`, err)
+    task.status = 'failed'
+    task.error = err.message
+    task.message = `处理失败：${err.message}`
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath)
+      } catch (e) {}
+    }
+  }
+}
 
 const processVideoAsync = async (taskId, ossPath, originalName, dateDir) => {
   const task = processingTasks.get(taskId)
@@ -428,6 +589,8 @@ const processVideoAsync = async (taskId, ossPath, originalName, dateDir) => {
         originalName,
         mediaType: 'image',
         uploadTime: new Date().toISOString(),
+        ossPath: ossPath,
+        ossUrl: `https://${ossConfig.bucket}.${ossConfig.publicEndpoint}/${ossPath}`,
         ossThumbnailUrl: `https://${ossConfig.bucket}.${ossConfig.publicEndpoint}/${ossThumbnailPath}`,
         ossThumbnailPath: ossThumbnailPath
       }
@@ -465,6 +628,21 @@ app.delete('/api/album/:id', async (req, res) => {
   const dateDir = item.filename.split('/')[0]
 
   if (item.mediaType === 'video') {
+    // Delete local video files
+    const videoPath = path.join(VIDEO_DIR, item.filename)
+    if (fs.existsSync(videoPath)) {
+      try {
+        fs.unlinkSync(videoPath)
+        console.log(`已删除本地视频：${videoPath}`)
+      } catch (err) {
+        console.error(`删除本地视频失败：${videoPath} - ${err.message}`)
+        return res.status(500).json({
+          error: `删除失败：本地视频删除失败（${videoPath} - ${err.message}）`,
+          stage: 'video'
+        })
+      }
+    }
+    // Also delete OSS files if they exist (for backward compatibility)
     const ossFilesToDelete = [item.ossVideoPath, item.ossCompressedPath, item.ossThumbnailPath].filter(Boolean)
     for (const ossPath of ossFilesToDelete) {
       try {
@@ -472,23 +650,43 @@ app.delete('/api/album/:id', async (req, res) => {
         console.log(`已删除 OSS 文件：${ossPath}`)
       } catch (err) {
         console.error(`删除 OSS 文件失败：${ossPath} - ${err.message}`)
-        return res.status(500).json({
-          error: `删除失败：OSS 文件删除失败（${ossPath} - ${err.message}）`,
-          stage: 'oss'
-        })
+        // Don't fail the whole operation for this
       }
     }
   } else {
+    // Delete local original image
+    if (item.filename) {
+      const originalPath = path.join(IMAGE_DIR, item.filename)
+      if (fs.existsSync(originalPath)) {
+        try {
+          fs.unlinkSync(originalPath)
+          console.log(`已删除本地原图：${originalPath}`)
+        } catch (err) {
+          console.error(`删除本地原图失败：${originalPath} - ${err.message}`)
+          return res.status(500).json({
+            error: `删除失败：本地原图删除失败（${originalPath} - ${err.message}）`,
+            stage: 'original'
+          })
+        }
+      }
+    }
+    // Also delete OSS files if they exist (for backward compatibility)
+    if (item.ossPath) {
+      try {
+        await ossClient.delete(item.ossPath)
+        console.log(`已删除 OSS 原图：${item.ossPath}`)
+      } catch (err) {
+        console.error(`删除 OSS 原图失败：${item.ossPath} - ${err.message}`)
+        // Don't fail the whole operation for this
+      }
+    }
     if (item.ossThumbnailPath) {
       try {
         await ossClient.delete(item.ossThumbnailPath)
         console.log(`已删除 OSS 缩略图：${item.ossThumbnailPath}`)
       } catch (err) {
         console.error(`删除 OSS 缩略图失败：${err.message}`)
-        return res.status(500).json({
-          error: `删除失败：OSS 缩略图删除失败（${err.message}）`,
-          stage: 'oss_thumbnail'
-        })
+        // Don't fail the whole operation for this
       }
     }
   }
@@ -535,9 +733,12 @@ app.get('/api/album/:id/download', (req, res) => {
     return res.status(404).json({ error: '文件不存在' })
   }
 
-  const downloadUrl = item.mediaType === 'video'
-    ? (item.ossCompressedUrl || item.ossVideoUrl)
-    : (item.ossThumbnailUrl)
+  let downloadUrl
+  if (item.mediaType === 'video') {
+    downloadUrl = item.ossCompressedUrl || item.ossVideoUrl || `/videos/${item.filename}`
+  } else {
+    downloadUrl = `/uploads/${item.filename}`
+  }
 
   if (!downloadUrl) {
     return res.status(404).json({ error: '文件不存在' })
