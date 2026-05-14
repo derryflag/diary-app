@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d8d8d8"/>
+      <stop offset="100%" stop-color="#a0a0a0"/>
+    </linearGradient>
+    <linearGradient id="earGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c8c8c8"/>
+      <stop offset="100%" stop-color="#989898"/>
+    </linearGradient>
+    <radialGradient id="cheekGrad">
+      <stop offset="0%" stop-color="#f0b8b8" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#f0b8b8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  
+  <!-- 左耳 -->
+  <ellipse cx="40" cy="36" rx="14" ry="32" fill="url(#earGrad)" transform="rotate(-12 40 36)"/>
+  <ellipse cx="42" cy="36" rx="7" ry="20" fill="#f5e8e8" transform="rotate(-12 42 36)"/>
+  
+  <!-- 右耳 -->
+  <ellipse cx="88" cy="36" rx="14" ry="32" fill="url(#earGrad)" transform="rotate(12 88 36)"/>
+  <ellipse cx="86" cy="36" rx="7" ry="20" fill="#f5e8e8" transform="rotate(12 86 36)"/>
+  
+  <!-- 头部 -->
+  <circle cx="64" cy="78" r="42" fill="url(#bodyGrad)"/>
+  
+  <!-- 腮红 -->
+  <circle cx="32" cy="84" r="10" fill="url(#cheekGrad)"/>
+  <circle cx="96" cy="84" r="10" fill="url(#cheekGrad)"/>
+  
+  <!-- 左眼 -->
+  <circle cx="48" cy="70" r="8" fill="#fff"/>
+  <circle cx="49" cy="70" r="5.5" fill="#333"/>
+  <circle cx="51" cy="68" r="2" fill="#fff"/>
+  
+  <!-- 右眼 -->
+  <circle cx="80" cy="70" r="8" fill="#fff"/>
+  <circle cx="79" cy="70" r="5.5" fill="#333"/>
+  <circle cx="77" cy="68" r="2" fill="#fff"/>
+  
+  <!-- 鼻子 -->
+  <ellipse cx="64" cy="82" rx="5" ry="4" fill="#e8a8a8"/>
+  
+  <!-- 嘴巴 -->
+  <path d="M57 87 Q61 94 64 91 Q67 94 71 87" stroke="#666" stroke-width="2" fill="none" stroke-linecap="round"/>
+</svg>

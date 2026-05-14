@@ -52,7 +52,7 @@
       </div>
     </div>
 
-    <div v-else-if="!isUploading" class="empty-state">
+    <div v-else-if="!showProcessingModal" class="empty-state">
       <p>还没有照片，快来上传吧！</p>
     </div>
 
@@ -97,13 +97,11 @@ export default {
     const router = useRouter()
     const fileInput = ref(null)
     const videoPlayer = ref(null)
-    const isUploading = ref(false)
-    const uploadProgress = ref(0)
-    const processingStatus = ref('')
     const showProcessingModal = ref(false)
     const processingSteps = ref([])
     const currentStep = ref(0)
-    const abortController = ref(null)
+    const uploadProgress = ref(0)
+    const processingStatus = ref('')
     const images = ref([])
     const showPreview = ref(false)
     const isPlaying = ref(false)
@@ -390,7 +388,7 @@ export default {
       longPressTimer.value = setTimeout(() => {
         isLongPress.value = true
         item.showDeleteBtn = true
-      }, 500)
+      }, 2000)
     }
 
     const onImageTouchEnd = () => {
@@ -644,7 +642,6 @@ export default {
       router,
       fileInput,
       videoPlayer,
-      isUploading,
       uploadProgress,
       processingStatus,
       showProcessingModal,
