@@ -747,9 +747,14 @@ app.get('/api/album/:id/download', (req, res) => {
   res.json({ downloadUrl })
 })
 
-app.use('/uploads', express.static(IMAGE_DIR))
-app.use('/thumbnails', express.static(THUMBNAIL_DIR))
-app.use('/videos', express.static(VIDEO_DIR))
+const setStaticCacheHeaders = (req, res, next) => {
+  res.setHeader('Cache-Control', 'public, max-age=604800')
+  next()
+}
+
+app.use('/uploads', setStaticCacheHeaders, express.static(IMAGE_DIR, { maxAge: '7d' }))
+app.use('/thumbnails', setStaticCacheHeaders, express.static(THUMBNAIL_DIR, { maxAge: '7d' }))
+app.use('/videos', setStaticCacheHeaders, express.static(VIDEO_DIR, { maxAge: '7d' }))
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'))
