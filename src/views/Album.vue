@@ -144,8 +144,11 @@ export default {
 
     const getImageSrc = (item) => {
       if (!item) return ''
-      if (item.ossUrl) {
-        return item.ossUrl
+      if (item.ossThumbnailUrl) {
+        return item.ossThumbnailUrl
+      }
+      if (item.thumbnail) {
+        return `/thumbnails/${item.thumbnail}`
       }
       return `/uploads/${item.filename}`
     }
