@@ -33,8 +33,12 @@
 
     <div v-if="displayedGroups.length > 0" @click="onImageClickOutside">
       <div v-for="group in displayedGroups" :key="group.dateKey" class="date-group">
-        <div class="date-label">{{ group.label }}</div>
-        <div class="images-grid" :style="gridStyle">
+        <div class="date-label" @click="toggleGroup(group)">
+          <span class="toggle-arrow" :class="{ collapsed: group.collapsed }">▶</span>
+          <span>{{ group.label }}</span>
+          <span class="image-count">（{{ group.images.length }} 张）</span>
+        </div>
+        <div v-if="!group.collapsed" class="images-grid" :style="gridStyle">
           <div 
             v-for="(item) in group.images" 
             :key="item.id" 
@@ -193,7 +197,8 @@ export default {
           dateKey: key,
           label: formatDateGroup(key),
           images: groups[key],
-          loaded: false
+          loaded: false,
+          collapsed: false
         }))
         
         displayedGroups.value = allGroups.value.slice(0, INITIAL_LOAD)
@@ -206,6 +211,10 @@ export default {
       } catch (err) {
         console.error('加载图片失败:', err)
       }
+    }
+
+    const toggleGroup = (group) => {
+      group.collapsed = !group.collapsed
     }
 
     const loadMore = async () => {
@@ -591,7 +600,6 @@ export default {
       if (!previewHistoryPushed.value) {
         previewHistoryPushed.value = true
         history.pushState({ preview: true }, '')
-        window.location.hash = 'preview'
       }
       if (item.mediaType === 'video') {
         nextTick(() => {
@@ -615,12 +623,6 @@ export default {
         history.go(-1)
       }
       previewHistoryPushed.value = false
-    }
-
-    const handleHashChange = () => {
-      if (showPreview.value && !window.location.hash.endsWith('preview')) {
-        closePreview(true)
-      }
     }
 
     const playVideo = () => {
@@ -663,14 +665,12 @@ export default {
       window.addEventListener('keydown', handleKeydown)
       window.addEventListener('scroll', handleScroll)
       window.addEventListener('popstate', handlePopstate)
-      window.addEventListener('hashchange', handleHashChange)
     })
 
     onUnmounted(() => {
       window.removeEventListener('keydown', handleKeydown)
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('popstate', handlePopstate)
-      window.removeEventListener('hashchange', handleHashChange)
     })
 
     const handleScroll = () => {
@@ -713,6 +713,7 @@ export default {
       deleteItemFromPreview,
       deleteCurrentItem,
       getVideoSrc,
+      getImageSrc,
       openPreview,
       closePreview,
       playVideo,
@@ -728,7 +729,8 @@ export default {
       onImageClickOutside,
       hideDeleteBtn,
       loadMore,
-      formatDuration
+      formatDuration,
+      toggleGroup
     }
   }
 }
@@ -965,6 +967,33 @@ export default {
   color: #333;
   padding: 8px 0 4px;
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.2s;
+}
+
+.date-label:hover {
+  opacity: 0.7;
+}
+
+.toggle-arrow {
+  display: inline-block;
+  transition: transform 0.25s;
+  font-size: 10px;
+  color: #999;
+}
+
+.toggle-arrow.collapsed {
+  transform: rotate(90deg);
+}
+
+.image-count {
+  font-weight: 400;
+  color: #999;
+  font-size: 13px;
 }
 
 .images-grid {
