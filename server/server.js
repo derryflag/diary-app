@@ -174,12 +174,36 @@ const getVideoDuration = (filePath) => {
   })
 }
 
-app.get('/api/diaries', (req, res) => {
+const ACCESS_PASSWORD = process.env.ACCESS_PASSWORD || 'rabbit2024'
+const AUTH_TOKEN = uuidv4()
+
+const authMiddleware = (req, res, next) => {
+  const token = req.headers['authorization']
+  if (!token || token !== AUTH_TOKEN) {
+    return res.status(401).json({ error: '未授权' })
+  }
+  next()
+}
+
+app.post('/api/auth/verify', (req, res) => {
+  const { password } = req.body
+  if (!password) {
+    return res.status(400).json({ error: '缺少密码' })
+  }
+
+  if (password === ACCESS_PASSWORD) {
+    res.json({ success: true, token: AUTH_TOKEN })
+  } else {
+    res.status(403).json({ error: '密码错误' })
+  }
+})
+
+app.get('/api/diaries', authMiddleware, (req, res) => {
   const diaries = readDiaries()
   res.json(diaries)
 })
 
-app.post('/api/diaries', (req, res) => {
+app.post('/api/diaries', authMiddleware, (req, res) => {
   const { date, content } = req.body
   if (!date || !content) {
     return res.status(400).json({ error: '缺少必要参数' })
@@ -198,7 +222,7 @@ app.post('/api/diaries', (req, res) => {
   res.json({ success: true })
 })
 
-app.delete('/api/diaries/:date', (req, res) => {
+app.delete('/api/diaries/:date', authMiddleware, (req, res) => {
   const { date } = req.params
   let diaries = readDiaries()
   diaries = diaries.filter(d => d.date !== date)
@@ -206,7 +230,7 @@ app.delete('/api/diaries/:date', (req, res) => {
   res.json({ success: true })
 })
 
-app.post('/api/oss/sign', async (req, res) => {
+app.post('/api/oss/sign', authMiddleware, async (req, res) => {
   try {
     const { filename, contentType, fileSize } = req.body
     if (!filename) {
@@ -242,7 +266,7 @@ app.post('/api/oss/sign', async (req, res) => {
   }
 })
 
-app.post('/api/album/upload', upload.single('file'), async (req, res) => {
+app.post('/api/album/upload', authMiddleware, upload.single('file'), async (req, res) => {
   try {
     const file = req.file
     if (!file) {
@@ -282,7 +306,7 @@ app.post('/api/album/upload', upload.single('file'), async (req, res) => {
   }
 })
 
-app.post('/api/album/confirm', async (req, res) => {
+app.post('/api/album/confirm', authMiddleware, async (req, res) => {
   const { ossPath, originalName, dateDir, mediaType, fileSize } = req.body
   if (!ossPath || !originalName) {
     return res.status(400).json({ error: '缺少必要参数' })
@@ -313,12 +337,12 @@ app.post('/api/album/confirm', async (req, res) => {
   res.json({ success: true, taskId })
 })
 
-app.get('/api/album', (req, res) => {
+app.get('/api/album', authMiddleware, (req, res) => {
   const album = readAlbum()
   res.json(album)
 })
 
-app.get('/api/album/:taskId/status', (req, res) => {
+app.get('/api/album/:taskId/status', authMiddleware, (req, res) => {
   const { taskId } = req.params
   const task = processingTasks.get(taskId)
   if (!task) {
@@ -616,7 +640,7 @@ const processVideoAsync = async (taskId, ossPath, originalName, dateDir) => {
   }
 }
 
-app.delete('/api/album/:id', async (req, res) => {
+app.delete('/api/album/:id', authMiddleware, async (req, res) => {
   const { id } = req.params
   let album = readAlbum()
   const item = album.find(a => a.id === id)
@@ -724,7 +748,7 @@ app.delete('/api/album/:id', async (req, res) => {
   res.json({ success: true })
 })
 
-app.get('/api/album/:id/download', (req, res) => {
+app.get('/api/album/:id/download', authMiddleware, (req, res) => {
   const { id } = req.params
   const album = readAlbum()
   const item = album.find(a => a.id === id)
