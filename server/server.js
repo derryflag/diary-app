@@ -5,7 +5,7 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import multer from 'multer'
-import { v4 as uuidv4 } from 'uuid'
+import { v4 as uuidv4, v5 as uuidv5 } from 'uuid'
 import sharp from 'sharp'
 import ffmpeg from 'fluent-ffmpeg'
 import ossClient, { ossConfig, publicClient } from './oss.js'
@@ -175,7 +175,7 @@ const getVideoDuration = (filePath) => {
 }
 
 const ACCESS_PASSWORD = process.env.ACCESS_PASSWORD || 'rabbit2024'
-const AUTH_TOKEN = uuidv4()
+const AUTH_TOKEN = uuidv5(ACCESS_PASSWORD, uuidv5.DNS)
 
 const authMiddleware = (req, res, next) => {
   const token = req.headers['authorization']
