@@ -292,6 +292,11 @@ export default {
 
           const uploadPromise = new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest()
+            xhr.open('POST', '/api/album/upload')
+            const token = localStorage.getItem('auth_token')
+            if (token) {
+              xhr.setRequestHeader('Authorization', token)
+            }
             xhr.upload.addEventListener('progress', (e) => {
               if (e.lengthComputable) {
                 uploadProgress.value = Math.round((e.loaded / e.total) * 30)
@@ -306,7 +311,6 @@ export default {
               }
             })
             xhr.addEventListener('error', () => reject(new Error('上传失败')))
-            xhr.open('POST', '/api/album/upload')
             xhr.send(formData)
           })
 
