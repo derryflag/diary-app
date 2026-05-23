@@ -242,12 +242,15 @@ export default {
     const processFiles = async (files) => {
       const validFiles = files.filter(file => {
         const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska', 'video/webm']
-        const maxSize = 100 * 1024 * 1024
+        const maxImageSize = 100 * 1024 * 1024
+        const maxVideoSize = 300 * 1024 * 1024
+        const isVideo = file.type.startsWith('video/')
+        const maxSize = isVideo ? maxVideoSize : maxImageSize
         return allowedTypes.includes(file.type) && file.size <= maxSize
       })
 
       if (validFiles.length === 0) {
-        alert('请上传有效的图片或视频文件，大小不超过100MB')
+        alert('请上传有效的图片（不超过100MB）或视频（不超过300MB）文件')
         return
       }
 
