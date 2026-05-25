@@ -1,7 +1,6 @@
 <template>
   <div class="album-view">
     <div class="album-header">
-      <button @click="goBack" class="back-btn">去日记</button>
       <h1>灰兔相册</h1>
       <div class="column-control">
         <span>每行</span>
@@ -93,12 +92,10 @@
 
 <script>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { useRouter } from 'vue-router'
 
 export default {
   name: 'Album',
   setup() {
-    const router = useRouter()
     const fileInput = ref(null)
     const videoPlayer = ref(null)
     const showProcessingModal = ref(false)
@@ -133,10 +130,6 @@ export default {
         gridTemplateColumns: `repeat(${columnCount.value}, ${itemWidth})`
       }
     })
-
-    const goBack = () => {
-      router.push('/')
-    }
 
     const getFullImageUrl = (filename) => {
       return `/uploads/${filename}`
@@ -696,7 +689,6 @@ export default {
     }
 
     return {
-      router,
       fileInput,
       videoPlayer,
       uploadProgress,
@@ -713,7 +705,6 @@ export default {
       currentIndex,
       currentImage,
       columnCount,
-      goBack,
       getFullImageUrl,
       gridStyle,
       triggerFileInput,
@@ -756,7 +747,7 @@ export default {
 .album-header {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 15px;
   margin-bottom: 20px;
 }
@@ -770,22 +761,6 @@ export default {
   margin: 0;
   font-size: 22px;
   font-weight: 600;
-}
-
-.back-btn {
-  background: linear-gradient(135deg, #85c285, #6bb36b);
-  color: white;
-  border: none;
-  border-radius: 6px;
-  padding: 8px 16px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.3s;
-}
-
-.back-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(133, 194, 133, 0.4);
 }
 
 .fab-upload {

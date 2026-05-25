@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Home from '../views/Home.vue'
 import Album from '../views/Album.vue'
+import Course from '../views/Course.vue'
 import Login from '../views/Login.vue'
 
 const routes = [
@@ -32,6 +33,12 @@ const routes = [
     path: '/album',
     name: 'Album',
     component: Album,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/course',
+    name: 'Course',
+    component: Course,
     meta: { requiresAuth: true }
   },
   {

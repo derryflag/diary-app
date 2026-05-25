@@ -2,7 +2,6 @@
   <div class="calendar-view">
     <div class="calendar-header">
       <div class="header-row">
-        <button @click="goToAlbum" class="album-btn">去相册</button>
         <h1>日记本</h1>
         <div class="view-toggle">
           <button @click="viewMode = 'week'" :class="{ active: viewMode === 'week' }">周视图</button>
@@ -407,10 +406,6 @@ export default {
       router.push('/pie')
     }
     
-    const goToAlbum = () => {
-      router.push('/album')
-    }
-    
     const handleKeydown = (e) => {
       if (e.key === 'Escape') {
         closeDiaryModal()
@@ -457,8 +452,7 @@ export default {
       closeDiaryModal,
       handleExport,
       goToChart,
-      goToPie,
-      goToAlbum
+      goToPie
     }
   }
 }
@@ -505,7 +499,7 @@ export default {
 
 .header-row {
   display: flex;
-  justify-content: flex-start;
+  justify-content: center;
   align-items: center;
   gap: 15px;
   position: relative;
@@ -514,21 +508,6 @@ export default {
 .view-toggle {
   position: absolute;
   right: 0;
-}
-
-.album-btn {
-  background: linear-gradient(135deg, #ffb347, #ff9500);
-  border: none;
-  border-radius: 6px;
-  padding: 6px 12px;
-  cursor: pointer;
-  font-size: 14px;
-  color: white;
-  transition: all 0.3s;
-}
-
-.album-btn:hover {
-  background: linear-gradient(135deg, #ffa533, #ff8500);
 }
 
 .title-row {

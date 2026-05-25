@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:3000'
+const BASE_URL = process.env.TEST_BASE_URL || 'http://127.0.0.1:3000'
 const ACCESS_PASSWORD = process.env.ACCESS_PASSWORD || '250121'
 const TEST_TIMEOUT = 30000
 
