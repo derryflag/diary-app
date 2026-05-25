@@ -2,14 +2,11 @@
   <div class="calendar-view">
     <div class="calendar-header">
       <div class="header-row">
-        <h1>日记本</h1>
+        <h1>灰兔日记</h1>
         <div class="view-toggle">
           <button @click="viewMode = 'week'" :class="{ active: viewMode === 'week' }">周视图</button>
           <button @click="viewMode = 'month'" :class="{ active: viewMode === 'month' }">月视图</button>
         </div>
-      </div>
-      <div class="title-row">
-        <span class="center-title">灰兔云成长日记本</span>
       </div>
       <div class="month-navigation">
         <button @click="viewMode === 'month' ? previousMonth() : previousWeek()" class="nav-btn">&lt;</button>
@@ -499,25 +496,7 @@ export default {
 
 .header-row {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 15px;
-  position: relative;
-}
-
-.view-toggle {
-  position: absolute;
-  right: 0;
-}
-
-.title-row {
-  text-align: center;
-  margin: 10px 0;
-}
-
-.month-navigation {
-  display: flex;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
   gap: 15px;
 }
@@ -525,6 +504,13 @@ export default {
 .view-toggle {
   display: flex;
   gap: 5px;
+}
+
+.month-navigation {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
 }
 
 .view-toggle button {
