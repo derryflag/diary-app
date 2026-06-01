@@ -47,6 +47,12 @@ const VIDEO_TYPES = ['.mp4', '.mov', '.avi', '.mkv', '.webm']
 const getDateDir = (filename) => {
   const match = filename.match(/^(?:IMG|VID)[_-](\d{8})/i)
   if (match) return match[1]
+  const mmexportMatch = filename.match(/mmexport(\d{13})/i)
+  if (mmexportMatch) {
+    const timestamp = parseInt(mmexportMatch[1])
+    const date = new Date(timestamp)
+    return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`
+  }
   const digits = filename.match(/(\d{8})/)
   if (digits) return digits[1]
   const now = new Date()

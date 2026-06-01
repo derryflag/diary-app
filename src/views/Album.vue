@@ -2,6 +2,7 @@
   <div class="album-view">
     <div class="album-header">
       <h1>灰兔相册</h1>
+      <button class="jump-btn" @click="showJumpPanel = true" title="跳转到指定日期">📅 跳转</button>
       <div class="column-control">
         <span>每行</span>
         <button 
@@ -11,6 +12,38 @@
           @click="columnCount = n"
         >{{ n }}</button>
         <span>个</span>
+      </div>
+    </div>
+
+    <div v-if="showJumpPanel" class="jump-panel-overlay" @click.self="showJumpPanel = false">
+      <div class="jump-panel">
+        <div class="jump-panel-header">
+          <h3>跳转到指定日期</h3>
+          <button class="close-panel-btn" @click="showJumpPanel = false">×</button>
+        </div>
+        <div class="jump-panel-section">
+          <div class="section-label">快捷选择</div>
+          <div class="quick-buttons">
+            <button v-for="btn in quickJumpButtons" :key="btn.label" @click="handleQuickJump(btn.offset)">
+              {{ btn.label }}
+            </button>
+          </div>
+        </div>
+        <div class="jump-panel-section">
+          <div class="section-label">选择年月</div>
+          <div class="date-selectors">
+            <select v-model="selectedYear" class="year-select">
+              <option v-for="year in availableYears" :key="year" :value="year">{{ year }}年</option>
+            </select>
+            <select v-model="selectedMonth" class="month-select">
+              <option v-for="month in 12" :key="month" :value="month">{{ month }}月</option>
+            </select>
+          </div>
+        </div>
+        <div class="jump-panel-actions">
+          <button class="cancel-btn" @click="showJumpPanel = false">取消</button>
+          <button class="confirm-btn" @click="handleJumpToDate">跳转</button>
+        </div>
       </div>
     </div>
 
@@ -31,7 +64,7 @@
     </div>
 
     <div v-if="displayedGroups.length > 0" @click="onImageClickOutside">
-      <div v-for="group in displayedGroups" :key="group.dateKey" class="date-group">
+      <div v-for="group in displayedGroups" :key="group.dateKey" :class="['date-group', { highlighted: highlightedGroup === group.dateKey }]" :data-date-key="group.dateKey">
         <div class="date-label" @click="toggleGroup(group)">
           <span class="toggle-arrow" :class="{ collapsed: group.collapsed }">▶</span>
           <span>{{ group.label }}</span>
@@ -119,6 +152,41 @@ export default {
     const isTouching = ref(false)
     const longPressTimer = ref(null)
     const isLongPress = ref(false)
+    const showJumpPanel = ref(false)
+    const selectedYear = ref(new Date().getFullYear())
+    const selectedMonth = ref(new Date().getMonth() + 1)
+    const highlightedGroup = ref(null)
+    
+    const quickJumpButtons = computed(() => {
+      const now = new Date()
+      const currentYear = now.getFullYear()
+      const currentMonth = now.getMonth() + 1
+      
+      const getDateOffset = (months) => {
+        const d = new Date(currentYear, currentMonth - 1 - months, 1)
+        return { year: d.getFullYear(), month: d.getMonth() + 1 }
+      }
+      
+      return [
+        { label: '1个月前', offset: 1 },
+        { label: '3个月前', offset: 3 },
+        { label: '6个月前', offset: 6 },
+        { label: '1年前', offset: 12 }
+      ]
+    })
+    
+    const availableYears = computed(() => {
+      const years = new Set()
+      const currentYear = new Date().getFullYear()
+      years.add(currentYear)
+      
+      allGroups.value.forEach(group => {
+        const year = parseInt(group.dateKey.slice(0, 4))
+        years.add(year)
+      })
+      
+      return Array.from(years).sort((a, b) => b - a)
+    })
     
     const currentImage = computed(() => {
       return flattenedImages.value[currentIndex.value] || null
@@ -213,6 +281,71 @@ export default {
       group.collapsed = !group.collapsed
     }
 
+    const handleQuickJump = (offsetMonths) => {
+      const now = new Date()
+      const targetDate = new Date(now.getFullYear(), now.getMonth() - offsetMonths, 1)
+      const targetYear = targetDate.getFullYear()
+      const targetMonth = targetDate.getMonth() + 1
+      
+      selectedYear.value = targetYear
+      selectedMonth.value = targetMonth
+      executeJump(targetYear, targetMonth)
+    }
+
+    const handleJumpToDate = () => {
+      executeJump(selectedYear.value, selectedMonth.value)
+    }
+
+    const executeJump = async (year, month) => {
+      showJumpPanel.value = false
+      
+      const targetKey = `${year}${String(month).padStart(2, '0')}`
+      
+      let targetGroup = allGroups.value.find(g => g.dateKey.startsWith(targetKey))
+      
+      if (!targetGroup) {
+        const allKeys = allGroups.value.map(g => g.dateKey).sort((a, b) => b.localeCompare(a))
+        const closestKey = allKeys.find(k => k < targetKey) || allKeys[allKeys.length - 1]
+        targetGroup = allGroups.value.find(g => g.dateKey === closestKey)
+      }
+      
+      if (!targetGroup) {
+        alert('未找到该日期的照片')
+        return
+      }
+      
+      const targetIndex = allGroups.value.indexOf(targetGroup)
+      
+      const loadCount = Math.max(INITIAL_LOAD * 3, targetIndex + INITIAL_LOAD)
+      const groupsToLoad = Math.min(loadCount, allGroups.value.length)
+      const neededGroups = allGroups.value.slice(0, groupsToLoad)
+      
+      displayedGroups.value = neededGroups
+      hasMore.value = displayedGroups.value.length < allGroups.value.length
+      flattenedImages.value = displayedGroups.value.flatMap(g => g.images)
+      
+      highlightedGroup.value = targetGroup.dateKey
+      
+      await nextTick()
+      
+      targetGroup.collapsed = false
+      
+      await nextTick()
+      
+      const el = document.querySelector(`.date-group[data-date-key="${targetGroup.dateKey}"]`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
+        handleScroll()
+        
+        setTimeout(() => {
+          highlightedGroup.value = null
+        }, 2000)
+      }
+    }
+
     const loadMore = async () => {
       const currentLength = displayedGroups.value.length
       const nextGroups = allGroups.value.slice(currentLength, currentLength + INITIAL_LOAD)
@@ -260,13 +393,39 @@ export default {
         alert(`已跳过 ${skipped} 个重复文件`)
       }
 
+      const fileDates = []
       for (let i = 0; i < newFiles.length; i++) {
         const file = newFiles[i]
+        const dateDir = extractDateDir(file.name)
+        if (dateDir) fileDates.push(dateDir)
         await uploadFileToOSS(file, i + 1, newFiles.length)
       }
 
       showProcessingModal.value = false
       await loadImages()
+
+      if (fileDates.length > 0) {
+        const sortedDates = fileDates.sort((a, b) => b.localeCompare(a))
+        const targetDate = sortedDates[0]
+        await nextTick()
+        const year = parseInt(targetDate.slice(0, 4))
+        const month = parseInt(targetDate.slice(4, 6))
+        await executeJump(year, month)
+      }
+    }
+
+    const extractDateDir = (filename) => {
+      const match = filename.match(/^(?:IMG|VID)[_-](\d{8})/i)
+      if (match) return match[1]
+      const mmexportMatch = filename.match(/mmexport(\d{13})/i)
+      if (mmexportMatch) {
+        const timestamp = parseInt(mmexportMatch[1])
+        const date = new Date(timestamp)
+        return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`
+      }
+      const digits = filename.match(/(\d{8})/)
+      if (digits) return digits[1]
+      return null
     }
 
     const uploadFileToOSS = async (file, current, total) => {
@@ -731,7 +890,14 @@ export default {
       hideDeleteBtn,
       loadMore,
       formatDuration,
-      toggleGroup
+      toggleGroup,
+      showJumpPanel,
+      quickJumpButtons,
+      availableYears,
+      selectedYear,
+      selectedMonth,
+      handleQuickJump,
+      handleJumpToDate
     }
   }
 }
@@ -793,6 +959,213 @@ export default {
   text-align: center;
   padding: 20px;
   color: #5b9bd5;
+}
+
+.jump-btn {
+  padding: 5px 12px;
+  border: 1px solid #85c285;
+  background: linear-gradient(135deg, #85c285, #6bb36b);
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.3s;
+  white-space: nowrap;
+}
+
+.jump-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(133, 194, 133, 0.4);
+}
+
+.jump-btn:active {
+  transform: translateY(0);
+}
+
+.jump-panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9998;
+  animation: fadeInOverlay 0.2s ease;
+}
+
+@keyframes fadeInOverlay {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.jump-panel {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.jump-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.jump-panel-header h3 {
+  margin: 0;
+  font-size: 17px;
+  color: #333;
+  font-weight: 600;
+}
+
+.close-panel-btn {
+  background: none;
+  border: none;
+  font-size: 26px;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.close-panel-btn:hover {
+  color: #333;
+}
+
+.jump-panel-section {
+  padding: 16px 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.section-label {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 10px;
+  font-weight: 500;
+}
+
+.quick-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.quick-buttons button {
+  padding: 10px 15px;
+  border: 1px solid #e0e0e0;
+  background: #f8f9fa;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333;
+  transition: all 0.2s;
+}
+
+.quick-buttons button:hover {
+  background: linear-gradient(135deg, #85c285, #6bb36b);
+  color: white;
+  border-color: #85c285;
+}
+
+.quick-buttons button:active {
+  transform: scale(0.98);
+}
+
+.date-selectors {
+  display: flex;
+  gap: 12px;
+}
+
+.year-select,
+.month-select {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #333;
+  background: #f8f9fa;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.year-select:focus,
+.month-select:focus {
+  outline: none;
+  border-color: #85c285;
+}
+
+.jump-panel-actions {
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+.jump-panel-actions button {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cancel-btn {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.cancel-btn:hover {
+  background: #e0e0e0;
+}
+
+.confirm-btn {
+  background: linear-gradient(135deg, #85c285, #6bb36b);
+  color: white;
+}
+
+.confirm-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(133, 194, 133, 0.4);
+}
+
+.confirm-btn:active {
+  transform: translateY(0);
+}
+
+.date-group {
+  margin-bottom: 30px;
+  transition: background-color 0.3s;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.date-group.highlighted {
+  background-color: rgba(133, 194, 133, 0.15);
+  animation: highlightPulse 2s ease;
+}
+
+@keyframes highlightPulse {
+  0%, 100% { background-color: rgba(133, 194, 133, 0.15); }
+  50% { background-color: rgba(133, 194, 133, 0.3); }
 }
 
 .column-control {
@@ -1217,11 +1590,16 @@ export default {
 
   .album-header {
     margin-bottom: 20px;
-    justify-content: flex-start;
   }
 
   .album-header h1 {
     flex: 1;
+    font-size: 18px;
+  }
+
+  .jump-btn {
+    padding: 5px 10px;
+    font-size: 12px;
   }
 
   .images-grid {
