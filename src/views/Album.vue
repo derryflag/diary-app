@@ -316,12 +316,13 @@ export default {
       
       const targetIndex = allGroups.value.indexOf(targetGroup)
       
-      const loadCount = Math.max(INITIAL_LOAD * 3, targetIndex + INITIAL_LOAD)
-      const groupsToLoad = Math.min(loadCount, allGroups.value.length)
-      const neededGroups = allGroups.value.slice(0, groupsToLoad)
+      const groupsBefore = Math.min(INITIAL_LOAD, targetIndex)
+      const start = targetIndex - groupsBefore
+      const end = targetIndex + INITIAL_LOAD + 1
+      const neededGroups = allGroups.value.slice(start, end)
       
       displayedGroups.value = neededGroups
-      hasMore.value = displayedGroups.value.length < allGroups.value.length
+      hasMore.value = end < allGroups.value.length
       flattenedImages.value = displayedGroups.value.flatMap(g => g.images)
       
       highlightedGroup.value = targetGroup.dateKey
@@ -336,10 +337,6 @@ export default {
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'start' })
         
-        await new Promise(resolve => setTimeout(resolve, 500))
-        
-        handleScroll()
-        
         setTimeout(() => {
           highlightedGroup.value = null
         }, 2000)
@@ -347,8 +344,10 @@ export default {
     }
 
     const loadMore = async () => {
-      const currentLength = displayedGroups.value.length
-      const nextGroups = allGroups.value.slice(currentLength, currentLength + INITIAL_LOAD)
+      const lastDisplayedGroup = displayedGroups.value[displayedGroups.value.length - 1]
+      const lastIndex = allGroups.value.indexOf(lastDisplayedGroup)
+      const nextStart = lastIndex >= 0 ? lastIndex + 1 : displayedGroups.value.length
+      const nextGroups = allGroups.value.slice(nextStart, nextStart + INITIAL_LOAD)
       
       displayedGroups.value = [...displayedGroups.value, ...nextGroups]
       hasMore.value = displayedGroups.value.length < allGroups.value.length
@@ -916,6 +915,11 @@ export default {
   justify-content: space-between;
   gap: 15px;
   margin-bottom: 20px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: white;
+  padding: 10px 0;
 }
 
 .album-header h1 {
