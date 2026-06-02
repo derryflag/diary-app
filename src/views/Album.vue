@@ -447,7 +447,11 @@ export default {
           const uploadPromise = new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest()
             xhr.open('POST', '/api/album/upload')
-            const token = localStorage.getItem('auth_token')
+            const getCookie = (name) => {
+              const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
+              return match ? match[2] : null
+            }
+            const token = getCookie('auth_token')
             if (token) {
               xhr.setRequestHeader('Authorization', token)
             }
@@ -669,7 +673,23 @@ export default {
       else nextImage()
     }
 
+    const stayAtDateAfterDelete = async (deletedItem) => {
+      const match = deletedItem.filename.match(/^(\d{8})\//)
+      if (!match) return
+      const dateKey = match[1]
+      const year = parseInt(dateKey.slice(0, 4))
+      const month = parseInt(dateKey.slice(4, 6))
+      
+      await nextTick()
+      
+      const targetGroup = allGroups.value.find(g => g.dateKey.startsWith(dateKey))
+      if (targetGroup) {
+        await executeJump(year, month)
+      }
+    }
+
     const deleteImage = async (id) => {
+      const deletedItem = flattenedImages.value.find(i => i.id === id)
       try {
         const res = await fetch(`/api/album/${id}`, {
           method: 'DELETE'
@@ -677,6 +697,7 @@ export default {
         const result = await res.json()
         if (result.success) {
           await loadImages()
+          if (deletedItem) await stayAtDateAfterDelete(deletedItem)
         } else {
           alert(result.error || '删除失败')
         }
@@ -719,6 +740,7 @@ export default {
         if (result.success) {
           closePreview()
           await loadImages()
+          await stayAtDateAfterDelete(item)
         } else {
           alert(result.error || '删除失败')
           return
@@ -730,6 +752,7 @@ export default {
       }
       closePreview()
       await loadImages()
+      await stayAtDateAfterDelete(item)
     }
 
     const deleteCurrentItem = async () => {
@@ -744,6 +767,7 @@ export default {
         if (result.success) {
           if (showPreview.value) closePreview()
           await loadImages()
+          await stayAtDateAfterDelete(item)
         } else {
           alert(result.error || '删除失败')
         }

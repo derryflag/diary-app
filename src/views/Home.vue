@@ -127,12 +127,6 @@
     <div class="footer-actions">
       <button @click="handleExport" class="action-btn">导出备份</button>
     </div>
-    
-    <div class="footer-beian">
-      <a href="http://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">
-        京ICP备2026015390号-1
-      </a>
-    </div>
   </div>
 </template>
 
@@ -470,22 +464,6 @@ export default {
   display: flex;
   justify-content: center;
   gap: 15px;
-}
-
-.footer-beian {
-  text-align: center;
-  margin-top: 20px;
-  font-size: 12px;
-  color: #999;
-}
-
-.footer-beian a {
-  color: #999;
-  text-decoration: none;
-}
-
-.footer-beian a:hover {
-  color: #5b9bd5;
 }
 
 .calendar-header {

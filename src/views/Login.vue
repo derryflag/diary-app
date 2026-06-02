@@ -53,9 +53,9 @@ export default {
         const result = await res.json()
 
         if (result.success) {
-          const expiresAt = Date.now() + 90 * 24 * 60 * 60 * 1000
-          localStorage.setItem('auth_token', result.token)
-          localStorage.setItem('auth_expires', expiresAt)
+          const expiresDays = 90
+          document.cookie = `auth_token=${result.token}; max-age=${expiresDays * 24 * 60 * 60}; path=/; SameSite=Lax`
+          document.cookie = `auth_expires=${Date.now() + expiresDays * 24 * 60 * 60 * 1000}; max-age=${expiresDays * 24 * 60 * 60}; path=/; SameSite=Lax`
           router.push('/')
         } else {
           errorMsg.value = result.error || '密码错误'

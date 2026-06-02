@@ -21,13 +21,13 @@ const routes = [
     path: '/chart',
     name: 'Chart3D',
     component: () => import('../views/Chart3D.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: false }
   },
   {
     path: '/pie',
     name: 'Pie3D',
     component: () => import('../views/Pie3D.vue'),
-    meta: { requiresAuth: true }
+    meta: { requiresAuth: false }
   },
   {
     path: '/album',
@@ -52,13 +52,18 @@ const router = createRouter({
   routes
 })
 
+const getCookie = (name) => {
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
+  return match ? match[2] : null
+}
+
 const checkAuth = () => {
-  const token = localStorage.getItem('auth_token')
-  const expires = localStorage.getItem('auth_expires')
+  const token = getCookie('auth_token')
+  const expires = getCookie('auth_expires')
   if (!token || !expires) return false
   if (Date.now() > parseInt(expires)) {
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('auth_expires')
+    document.cookie = 'auth_token=; max-age=0; path=/'
+    document.cookie = 'auth_expires=; max-age=0; path=/'
     return false
   }
   return true

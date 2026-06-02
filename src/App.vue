@@ -1,6 +1,6 @@
 <template>
   <div id="app">
-    <nav class="top-nav">
+    <nav v-if="showNav" class="top-nav">
       <div class="nav-container">
         <router-link to="/" class="nav-item" :class="{ active: isRouteActive('/') }">
           <span class="nav-icon">📖</span>
@@ -23,12 +23,22 @@
         </keep-alive>
       </router-view>
     </main>
+    <footer class="global-footer">
+      <a href="http://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">
+        京ICP备2026015390号-1
+      </a>
+    </footer>
   </div>
 </template>
 
 <script>
 export default {
   name: 'App',
+  computed: {
+    showNav() {
+      return this.$route.path !== '/login'
+    }
+  },
   methods: {
     isRouteActive(path) {
       if (path === '/' && this.$route.path === '/') return true
@@ -161,6 +171,22 @@ body {
 
 main {
   min-height: calc(100vh - 100px);
+}
+
+.global-footer {
+  text-align: center;
+  padding: 20px;
+  font-size: 12px;
+  color: #999;
+}
+
+.global-footer a {
+  color: #999;
+  text-decoration: none;
+}
+
+.global-footer a:hover {
+  color: #5b9bd5;
 }
 
 @media (max-width: 768px) {
