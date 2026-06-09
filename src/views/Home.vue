@@ -3,15 +3,50 @@
     <div class="calendar-header">
       <div class="header-row">
         <h1>灰兔日记</h1>
-        <div class="view-toggle">
-          <button @click="viewMode = 'week'" :class="{ active: viewMode === 'week' }">周视图</button>
-          <button @click="viewMode = 'month'" :class="{ active: viewMode === 'month' }">月视图</button>
+        <div class="header-actions">
+          <button class="jump-btn" @click="showJumpPanel = true" title="跳转到指定日期">📅 跳转</button>
+          <div class="view-toggle">
+            <button @click="viewMode = 'week'" :class="{ active: viewMode === 'week' }">周视图</button>
+            <button @click="viewMode = 'month'" :class="{ active: viewMode === 'month' }">月视图</button>
+          </div>
         </div>
       </div>
       <div class="month-navigation">
         <button @click="viewMode === 'month' ? previousMonth() : previousWeek()" class="nav-btn">&lt;</button>
         <h2>{{ viewMode === 'month' ? currentMonthYear : currentWeekRange }}</h2>
         <button @click="viewMode === 'month' ? nextMonth() : nextWeek()" class="nav-btn">&gt;</button>
+      </div>
+    </div>
+
+    <div v-if="showJumpPanel" class="jump-panel-overlay" @click.self="showJumpPanel = false">
+      <div class="jump-panel">
+        <div class="jump-panel-header">
+          <h3>跳转到指定日期</h3>
+          <button class="close-panel-btn" @click="showJumpPanel = false">×</button>
+        </div>
+        <div class="jump-panel-section">
+          <div class="section-label">快捷选择</div>
+          <div class="quick-buttons">
+            <button v-for="btn in quickJumpButtons" :key="btn.label" @click="handleQuickJump(btn.months)">
+              {{ btn.label }}
+            </button>
+          </div>
+        </div>
+        <div class="jump-panel-section">
+          <div class="section-label">选择年月</div>
+          <div class="date-selectors">
+            <select v-model="selectedYear" class="year-select">
+              <option v-for="year in availableYears" :key="year" :value="year">{{ year }}年</option>
+            </select>
+            <select v-model="selectedMonth" class="month-select">
+              <option v-for="month in 12" :key="month" :value="month">{{ month }}月</option>
+            </select>
+          </div>
+        </div>
+        <div class="jump-panel-actions">
+          <button class="cancel-btn" @click="showJumpPanel = false">取消</button>
+          <button class="confirm-btn" @click="handleJumpToDate">跳转</button>
+        </div>
       </div>
     </div>
     
@@ -152,6 +187,29 @@ export default {
     })
     const weekdays = ['日', '一', '二', '三', '四', '五', '六']
     const weekdaysFull = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+    
+    // Jump panel state
+    const showJumpPanel = ref(false)
+    const selectedYear = ref(new Date().getFullYear())
+    const selectedMonth = ref(new Date().getMonth() + 1)
+    
+    const quickJumpButtons = [
+      { label: '3个月前', months: 3 },
+      { label: '6个月前', months: 6 },
+      { label: '1年前', months: 12 },
+      { label: '3年前', months: 36 },
+      { label: '5年前', months: 60 },
+      { label: '10年前', months: 120 }
+    ]
+    
+    const availableYears = computed(() => {
+      const currentYear = new Date().getFullYear()
+      const years = []
+      for (let y = currentYear; y >= currentYear - 15; y--) {
+        years.push(y)
+      }
+      return years
+    })
     
     const loadDiaries = async () => {
       diaries.value = await dbAPI.getAll()
@@ -389,6 +447,20 @@ export default {
       exportToJSON(diaries.value)
     }
     
+    const handleQuickJump = (months) => {
+      const now = new Date()
+      const targetDate = new Date(now.getFullYear(), now.getMonth() - months, 1)
+      currentDate.value = targetDate
+      selectedYear.value = targetDate.getFullYear()
+      selectedMonth.value = targetDate.getMonth() + 1
+      showJumpPanel.value = false
+    }
+
+    const handleJumpToDate = () => {
+      currentDate.value = new Date(selectedYear.value, selectedMonth.value - 1, 1)
+      showJumpPanel.value = false
+    }
+    
     const goToChart = () => {
       router.push('/chart')
     }
@@ -442,6 +514,13 @@ export default {
       deleteDiary,
       closeDiaryModal,
       handleExport,
+      showJumpPanel,
+      quickJumpButtons,
+      availableYears,
+      selectedYear,
+      selectedMonth,
+      handleQuickJump,
+      handleJumpToDate,
       goToChart,
       goToPie
     }
@@ -466,6 +545,174 @@ export default {
   gap: 15px;
 }
 
+.jump-panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9998;
+  animation: fadeInOverlay 0.2s ease;
+}
+
+@keyframes fadeInOverlay {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.jump-panel {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.jump-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.jump-panel-header h3 {
+  margin: 0;
+  font-size: 17px;
+  color: #333;
+  font-weight: 600;
+}
+
+.close-panel-btn {
+  background: none;
+  border: none;
+  font-size: 26px;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.close-panel-btn:hover {
+  color: #333;
+}
+
+.jump-panel-section {
+  padding: 16px 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.section-label {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 10px;
+  font-weight: 500;
+}
+
+.quick-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.quick-buttons button {
+  padding: 10px 8px;
+  border: 1px solid #e0e0e0;
+  background: #f8f9fa;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #333;
+  transition: all 0.2s;
+}
+
+.quick-buttons button:hover {
+  background: linear-gradient(135deg, #85c285, #6bb36b);
+  color: white;
+  border-color: #85c285;
+}
+
+.quick-buttons button:active {
+  transform: scale(0.98);
+}
+
+.date-selectors {
+  display: flex;
+  gap: 12px;
+}
+
+.year-select,
+.month-select {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #333;
+  background: #f8f9fa;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.year-select:focus,
+.month-select:focus {
+  outline: none;
+  border-color: #85c285;
+}
+
+.jump-panel-actions {
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+.jump-panel-actions button {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cancel-btn {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.cancel-btn:hover {
+  background: #e0e0e0;
+}
+
+.confirm-btn {
+  background: linear-gradient(135deg, #85c285, #6bb36b);
+  color: white;
+}
+
+.confirm-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(133, 194, 133, 0.4);
+}
+
+.confirm-btn:active {
+  transform: translateY(0);
+}
+
 .calendar-header {
   margin-bottom: 30px;
   padding-bottom: 20px;
@@ -477,6 +724,30 @@ export default {
   justify-content: space-between;
   align-items: center;
   gap: 15px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.jump-btn {
+  padding: 5px 12px;
+  border: 1px solid #85c285;
+  background: linear-gradient(135deg, #85c285, #6bb36b);
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.3s;
+  white-space: nowrap;
+}
+
+.jump-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(133, 194, 133, 0.4);
 }
 
 .view-toggle {
@@ -954,7 +1225,26 @@ export default {
     padding: 15px;
     text-align: center;
   }
+
+  .header-actions {
+    flex-direction: column;
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .header-row {
+    flex-wrap: wrap;
+  }
   
+  .jump-btn {
+    font-size: 12px;
+    padding: 6px 12px;
+  }
+
+  .quick-buttons {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
   .weekdays {
     display: grid;
     grid-template-columns: repeat(7, 1fr);

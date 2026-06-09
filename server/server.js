@@ -5,16 +5,17 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import multer from 'multer'
-import { v4 as uuidv4, v5 as uuidv5 } from 'uuid'
+import { v4 as uuidv4 } from 'uuid'
 import sharp from 'sharp'
 import ffmpeg from 'fluent-ffmpeg'
 import ossClient, { ossConfig, publicClient } from './oss.js'
+import diaryRouter from './routes/diary.js'
+import { authMiddleware } from './middleware/auth.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 const DATA_DIR = path.join(__dirname, '../data')
-const DATA_FILE = path.join(DATA_DIR, 'diaries.json')
 const ALBUM_FILE = path.join(DATA_DIR, 'album.json')
 const PROCESSING_DIR = path.join(DATA_DIR, 'processing')
 
@@ -40,6 +41,9 @@ app.use(cors({
 app.use(express.json())
 
 app.use(express.static(path.join(__dirname, '../dist')))
+
+// 挂载日记路由
+app.use(diaryRouter)
 
 const IMAGE_TYPES = ['.jpg', '.jpeg', '.png', '.gif', '.webp']
 const VIDEO_TYPES = ['.mp4', '.mov', '.avi', '.mkv', '.webm']
@@ -90,26 +94,6 @@ const upload = multer({
   fileFilter,
   limits: { fileSize: 300 * 1024 * 1024 }
 })
-
-const readDiaries = () => {
-  try {
-    if (!fs.existsSync(DATA_FILE)) {
-      return []
-    }
-    const data = fs.readFileSync(DATA_FILE, 'utf-8')
-    return JSON.parse(data || '[]')
-  } catch (err) {
-    console.error('读取日记失败:', err)
-    return []
-  }
-}
-
-const writeDiaries = (diaries) => {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true })
-  }
-  fs.writeFileSync(DATA_FILE, JSON.stringify(diaries, null, 2))
-}
 
 const readAlbum = () => {
   try {
@@ -179,62 +163,6 @@ const getVideoDuration = (filePath) => {
     })
   })
 }
-
-const ACCESS_PASSWORD = process.env.ACCESS_PASSWORD || 'rabbit2024'
-const AUTH_TOKEN = uuidv5(ACCESS_PASSWORD, uuidv5.DNS)
-
-const authMiddleware = (req, res, next) => {
-  const token = req.headers['authorization']
-  if (!token || token !== AUTH_TOKEN) {
-    return res.status(401).json({ error: '未授权' })
-  }
-  next()
-}
-
-app.post('/api/auth/verify', (req, res) => {
-  const { password } = req.body
-  if (!password) {
-    return res.status(400).json({ error: '缺少密码' })
-  }
-
-  if (password === ACCESS_PASSWORD) {
-    res.json({ success: true, token: AUTH_TOKEN })
-  } else {
-    res.status(403).json({ error: '密码错误' })
-  }
-})
-
-app.get('/api/diaries', authMiddleware, (req, res) => {
-  const diaries = readDiaries()
-  res.json(diaries)
-})
-
-app.post('/api/diaries', authMiddleware, (req, res) => {
-  const { date, content } = req.body
-  if (!date || !content) {
-    return res.status(400).json({ error: '缺少必要参数' })
-  }
-
-  const diaries = readDiaries()
-  const existingIndex = diaries.findIndex(d => d.date === date)
-
-  if (existingIndex >= 0) {
-    diaries[existingIndex].content = content
-  } else {
-    diaries.push({ date, content })
-  }
-
-  writeDiaries(diaries)
-  res.json({ success: true })
-})
-
-app.delete('/api/diaries/:date', authMiddleware, (req, res) => {
-  const { date } = req.params
-  let diaries = readDiaries()
-  diaries = diaries.filter(d => d.date !== date)
-  writeDiaries(diaries)
-  res.json({ success: true })
-})
 
 app.post('/api/oss/sign', authMiddleware, async (req, res) => {
   try {
