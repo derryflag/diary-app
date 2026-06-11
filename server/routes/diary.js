@@ -37,7 +37,7 @@ router.get('/api/diaries', authMiddleware, (req, res) => {
 // 创建或更新日记
 router.post('/api/diaries', authMiddleware, (req, res) => {
   const { date, content } = req.body
-  if (!date || !content) {
+  if (date === undefined || content === undefined) {
     return res.status(400).json({ error: '缺少必要参数' })
   }
 

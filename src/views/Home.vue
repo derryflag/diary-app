@@ -126,6 +126,7 @@
           
           <div class="form-actions">
             <button type="submit" class="save-btn">保存</button>
+            <button type="button" @click="clearContent" class="clear-btn">清空</button>
             <button type="button" @click="closeDiaryModal" class="cancel-btn">取消</button>
           </div>
         </form>
@@ -153,6 +154,7 @@
           
           <div class="form-actions">
             <button type="submit" class="save-btn">保存</button>
+            <button type="button" @click="clearContent" class="clear-btn">清空</button>
             <button type="button" @click="closeDiaryModal" class="cancel-btn">取消</button>
           </div>
         </form>
@@ -376,6 +378,10 @@ export default {
       currentDate.value = new Date(currentDate.value.getFullYear(), currentDate.value.getMonth() + 1)
     }
     
+    const openDiaryModal = () => {
+      window.history.pushState({ diaryModal: true }, '')
+    }
+    
     const handleDayClick = (day) => {
       selectedDate.value = day.date
       const diary = getDiaryByDate(day.date, diaries.value)
@@ -393,6 +399,7 @@ export default {
           content: '\n\n\n\n\n'
         }
       }
+      openDiaryModal()
     }
     
     const enterEditMode = () => {
@@ -425,6 +432,10 @@ export default {
       await loadDiaries()
     }
     
+    const clearContent = () => {
+      diaryForm.value.content = ''
+    }
+    
     const deleteDiary = () => {
       if (confirm('确定要删除这篇日记吗？')) {
         dbAPI.delete(selectedDayDiary.value.date).then(() => {
@@ -440,6 +451,10 @@ export default {
       isEditMode.value = false
       diaryForm.value = {
         content: ''
+      }
+      // If modal was opened via history push, go back to remove it
+      if (window.history.state?.diaryModal) {
+        window.history.back()
       }
     }
     
@@ -475,13 +490,19 @@ export default {
       }
     }
     
+    const handlePopState = () => {
+      closeDiaryModal()
+    }
+    
     onMounted(() => {
       loadDiaries()
       window.addEventListener('keydown', handleKeydown)
+      window.addEventListener('popstate', handlePopState)
     })
     
     onUnmounted(() => {
       window.removeEventListener('keydown', handleKeydown)
+      window.removeEventListener('popstate', handlePopState)
     })
     
     return {
@@ -511,6 +532,7 @@ export default {
       handleDayClick,
       enterEditMode,
       saveDiary,
+      clearContent,
       deleteDiary,
       closeDiaryModal,
       handleExport,
@@ -1191,6 +1213,22 @@ export default {
   background-color: #e0e0e0;
 }
 
+.clear-btn {
+  background: linear-gradient(135deg, #ffb347, #ff9500);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.clear-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(255, 179, 71, 0.4);
+}
+
 @media (max-width: 768px) {
   .calendar-view {
     max-width: none;
@@ -1227,18 +1265,27 @@ export default {
   }
 
   .header-actions {
-    flex-direction: column;
-    gap: 8px;
-    align-items: stretch;
+    gap: 6px;
   }
 
   .header-row {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  .header-row h1 {
+    font-size: 18px;
+    white-space: nowrap;
   }
   
   .jump-btn {
-    font-size: 12px;
-    padding: 6px 12px;
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
+  .view-toggle button {
+    padding: 3px 6px;
+    font-size: 11px;
   }
 
   .quick-buttons {
