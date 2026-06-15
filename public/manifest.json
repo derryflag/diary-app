@@ -2,7 +2,7 @@
   "name": "灰兔日记",
   "short_name": "灰兔日记",
   "start_url": "/",
-  "display": "standalone",
+  "display": "browser",
   "background_color": "#f5f7fa",
   "theme_color": "#667eea",
   "icons": [
