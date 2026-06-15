@@ -54,8 +54,12 @@ export default {
 
         if (result.success) {
           const expiresDays = 90
+          const expires = Date.now() + expiresDays * 24 * 60 * 60 * 1000
+          // 同时存 localStorage 和 cookie，确保 PWA 模式下持久化
+          localStorage.setItem('auth_token', result.token)
+          localStorage.setItem('auth_expires', String(expires))
           document.cookie = `auth_token=${result.token}; max-age=${expiresDays * 24 * 60 * 60}; path=/; SameSite=Lax`
-          document.cookie = `auth_expires=${Date.now() + expiresDays * 24 * 60 * 60 * 1000}; max-age=${expiresDays * 24 * 60 * 60}; path=/; SameSite=Lax`
+          document.cookie = `auth_expires=${expires}; max-age=${expiresDays * 24 * 60 * 60}; path=/; SameSite=Lax`
           router.push('/')
         } else {
           errorMsg.value = result.error || '密码错误'

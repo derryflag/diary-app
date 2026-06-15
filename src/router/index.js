@@ -58,10 +58,20 @@ const getCookie = (name) => {
 }
 
 const checkAuth = () => {
-  const token = getCookie('auth_token')
-  const expires = getCookie('auth_expires')
+  // 先尝试从 localStorage 读取（PWA 模式下 cookie 可能被隔离）
+  let token = localStorage.getItem('auth_token')
+  let expires = localStorage.getItem('auth_expires')
+  
+  // 兼容旧版 cookie 方式
+  if (!token || !expires) {
+    token = getCookie('auth_token')
+    expires = getCookie('auth_expires')
+  }
+  
   if (!token || !expires) return false
   if (Date.now() > parseInt(expires)) {
+    localStorage.removeItem('auth_token')
+    localStorage.removeItem('auth_expires')
     document.cookie = 'auth_token=; max-age=0; path=/'
     document.cookie = 'auth_expires=; max-age=0; path=/'
     return false
