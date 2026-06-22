@@ -82,97 +82,59 @@ const getDateDirFromExif = async (filePath) => {
   }
 }
 
-// MP4 / MOV 的 mvhd.creation_time 解析（无需外部依赖）
-// 文件结构：一系列 "box"，每个 box = 4字节size + 4字节type + body
-// moov > mvhd 里有 creation_time（自 1904-01-01 起的秒数，通常是 32 位，部分文件是 64 位）
+// MP4 / MOV 的 mvhd.creation_time 解析（用成熟库 music-metadata）
+// 它会正确处理 moov 在文件尾部、64 位扩展 size 等各种标准/非标 MP4 布局
+import * as mm from 'music-metadata'
+
 const getDateDirFromMp4 = async (filePath) => {
-  // seconds between 1904-01-01 UTC and 1970-01-01 UTC
-  const MAC_EPOCH_DIFF = 2082844800n
-
-  const findBox = (buf, offset, end, wantedType) => {
-    let p = offset
-    while (p + 8 <= end) {
-      const size = buf.readUInt32BE(p)
-      const type = buf.slice(p + 4, p + 8).toString('ascii')
-      let headerSize = 8
-      let bodySize = size
-      if (size === 1) {
-        if (p + 16 > end) return null
-        bodySize = Number(buf.readBigUInt64BE(p + 8))
-        headerSize = 16
-      } else if (size < 8) {
-        return null
-      }
-      if (bodySize < 8) return null
-      const next = p + bodySize
-      if (next > end) return null
-      if (type === wantedType) return { start: p, bodyStart: p + headerSize, end: next }
-      p = next
-    }
-    return null
-  }
-
+  const debug = []
   try {
-    if (!filePath || !fs.existsSync(filePath)) return null
-    const stat = fs.statSync(filePath)
-    if (stat.size < 32) return null
-
-    // moov 几乎总是在文件头部 1MB 以内（ftyp/moov/mdat 的标准布局）
-    // 先读前 1MB；若还找不到 moov，再读文件末尾 1MB（少数编码器把 moov 放文件尾部）
-    const HEAD_LIMIT = 1 * 1024 * 1024
-    const TAIL_LIMIT = 1 * 1024 * 1024
-    const READ_LIMIT = Math.min(stat.size, HEAD_LIMIT)
-    const fd = fs.openSync(filePath, 'r')
-    try {
-      const buf = Buffer.alloc(READ_LIMIT)
-      const bytesRead = fs.readSync(fd, buf, 0, READ_LIMIT, 0)
-
-      // moov 可能在文件头部也可能在尾部。
-      // 找到 moov 后必须同步记录它在哪个 buffer 里，否则后续在 moov 内找 mvhd 时会访问错误的 buffer。
-      let activeBuf = buf
-      let moov = findBox(activeBuf, 0, bytesRead, 'moov')
-      if (!moov && stat.size > READ_LIMIT) {
-        const tailSize = Math.min(stat.size, TAIL_LIMIT)
-        const tailOffset = stat.size - tailSize
-        const tailBuf = Buffer.alloc(tailSize)
-        const tailRead = fs.readSync(fd, tailBuf, 0, tailSize, tailOffset)
-        moov = findBox(tailBuf, 0, tailRead, 'moov')
-        if (moov) activeBuf = tailBuf
-      }
-      if (!moov) return null
-
-      // 在 moov 所在的 buffer 里继续找 mvhd
-      const mvhd = findBox(activeBuf, moov.bodyStart, moov.end, 'mvhd')
-      if (!mvhd) return null
-
-      // mvhd body: version(1) + flags(3) + creation_time(4 或 version==1 时 8)
-      const p = mvhd.bodyStart
-      if (p + 20 > mvhd.end) return null
-      const version = activeBuf.readUInt8(p)
-      let creationSec
-      if (version === 1) {
-        if (p + 28 > mvhd.end) return null
-        creationSec = activeBuf.readBigUInt64BE(p + 4)
-      } else {
-        creationSec = BigInt(activeBuf.readUInt32BE(p + 4))
-      }
-
-      // 转成 unix 秒数，再构造 Date
-      if (creationSec <= MAC_EPOCH_DIFF) return null
-      const unixMs = Number(creationSec - MAC_EPOCH_DIFF) * 1000
-      const date = new Date(unixMs)
-      if (isNaN(date.getTime())) return null
-
-      const y = date.getUTCFullYear()
-      const m = String(date.getUTCMonth() + 1).padStart(2, '0')
-      const d = String(date.getUTCDate()).padStart(2, '0')
-      if (y < 1990 || y > 2100) return null
-      return `${y}${m}${d}`
-    } finally {
-      fs.closeSync(fd)
+    if (!filePath || !fs.existsSync(filePath)) {
+      debug.push('文件不存在')
+      return { dateDir: null, reason: debug.join('；') }
     }
+    const stat = fs.statSync(filePath)
+    debug.push(`文件大小=${(stat.size / 1024 / 1024).toFixed(2)}MB`)
+
+    // music-metadata 内部用流式解析器，能自动定位 moov 位置
+    const metadata = await mm.parseFile(filePath, {
+      duration: false,
+      skipCovers: true,
+      mimeType: 'video/mp4'
+    })
+
+    // 有两个可能的日期来源：
+    // 1) format.creationTime —— 大多数现代 MP4/MOV 都会写 mvhd.creation_time
+    // 2) common.year —— 回退项（若库能从 tag 中推断年份）
+    let creationTime = null
+    if (metadata && metadata.format && metadata.format.creationTime) {
+      creationTime = metadata.format.creationTime
+    } else if (metadata && metadata.common && metadata.common.year) {
+      debug.push(`未取到 creationTime，fallback 到 common.year=${metadata.common.year}`)
+      creationTime = new Date(metadata.common.year, 0, 1)
+    } else {
+      debug.push('music-metadata 未返回 creationTime 或 year')
+      return { dateDir: null, reason: debug.join('；') }
+    }
+
+    // creationTime 可能是 Date 对象、ISO 字符串、或 epoch 毫秒数——new Date() 都能处理
+    const date = (creationTime instanceof Date) ? creationTime : new Date(creationTime)
+    if (isNaN(date.getTime())) {
+      debug.push(`解析日期失败: creationTime=${creationTime}`)
+      return { dateDir: null, reason: debug.join('；') }
+    }
+
+    const y = date.getUTCFullYear()
+    const m = String(date.getUTCMonth() + 1).padStart(2, '0')
+    const d = String(date.getUTCDate()).padStart(2, '0')
+    debug.push(`解析到 UTC 日期: ${y}-${m}-${d}`)
+    if (y < 1990 || y > 2100) {
+      debug.push(`年份${y}超出范围(1990-2100)，丢弃`)
+      return { dateDir: null, reason: debug.join('；') }
+    }
+    return { dateDir: `${y}${m}${d}`, reason: debug.join('；') }
   } catch (err) {
-    return null
+    return { dateDir: null, reason: `异常: ${err.message}` }
   }
 }
 
@@ -188,8 +150,10 @@ const resolveDateDir = async (filePath, originalName, isVideo) => {
   let result = null
   if (filePath) {
     if (isVideo) {
-      const fromMp4 = await getDateDirFromMp4(filePath)
-      logLines.push(`  MP4/mvhd: ${fromMp4 || '无'}`)
+      const mp4Result = await getDateDirFromMp4(filePath)
+      const fromMp4 = mp4Result ? mp4Result.dateDir : null
+      const mp4Reason = mp4Result && mp4Result.reason ? ` (${mp4Result.reason})` : ''
+      logLines.push(`  MP4/mvhd: ${fromMp4 || '无'}${mp4Reason}`)
       if (fromMp4) result = fromMp4
     } else {
       const fromExif = await getDateDirFromExif(filePath)
