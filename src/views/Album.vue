@@ -53,7 +53,10 @@
         <div class="progress-bar">
           <div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div>
         </div>
-        <div class="progress-text">{{ uploadProgress }}%</div>
+        <div class="progress-text">
+          <span>{{ uploadProgress }}%</span>
+          <span v-if="uploadSizeInfo" class="progress-size">{{ uploadSizeInfo }}</span>
+        </div>
         <div class="processing-steps">
           <div v-for="(step, idx) in processingSteps" :key="idx" 
                :class="['step', { active: idx === currentStep, done: idx < currentStep }]">
@@ -135,6 +138,7 @@ export default {
     const processingSteps = ref([])
     const currentStep = ref(0)
     const uploadProgress = ref(0)
+    const uploadSizeInfo = ref('')
     const processingStatus = ref('')
     const images = ref([])
     const showPreview = ref(false)
@@ -440,9 +444,18 @@ export default {
 
     const uploadFileToOSS = async (file, current, total) => {
       const isVideo = file.type.startsWith('video/')
-      
+
+      // 把字节数格式化为易读的大小，例如 "12.34 MB / 25.72 MB"
+      const formatSize = (bytes) => {
+        if (bytes < 1024) return bytes + ' B'
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+        if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(2) + ' MB'
+        return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB'
+      }
+
       showProcessingModal.value = true
       uploadProgress.value = 0
+      uploadSizeInfo.value = ''
       processingStatus.value = `正在上传第 ${current}/${total} 个文件...`
       processingSteps.value = isVideo
         ? ['上传原视频', '生成缩略图', '压缩视频', '获取时长', '保存记录']
@@ -468,7 +481,9 @@ export default {
             }
             xhr.upload.addEventListener('progress', (e) => {
               if (e.lengthComputable) {
-                uploadProgress.value = Math.round((e.loaded / e.total) * 30)
+                // 图片：上传阶段占 0-60%，后面的后端处理占 60-100%
+                uploadProgress.value = Math.round((e.loaded / e.total) * 60)
+                uploadSizeInfo.value = formatSize(e.loaded) + ' / ' + formatSize(e.total)
               }
             })
             xhr.addEventListener('load', () => {
@@ -484,6 +499,7 @@ export default {
           })
 
           const uploadResult = await uploadPromise
+          uploadSizeInfo.value = ''
           currentStep.value = 1
           processingStatus.value = `第 ${current}/${total} 个文件上传成功，正在处理...`
 
@@ -510,13 +526,16 @@ export default {
 
           showProcessingModal.value = true
           uploadProgress.value = 0
+          uploadSizeInfo.value = ''
           processingStatus.value = `正在上传第 ${current}/${total} 个文件... [${endpoint}]`
 
           await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest()
             xhr.upload.addEventListener('progress', (e) => {
               if (e.lengthComputable) {
-                uploadProgress.value = Math.round((e.loaded / e.total) * 20)
+                // 视频：上传阶段占 0-60%，后面的后端处理占 60-100%
+                uploadProgress.value = Math.round((e.loaded / e.total) * 60)
+                uploadSizeInfo.value = formatSize(e.loaded) + ' / ' + formatSize(e.total)
               }
             })
             xhr.addEventListener('load', () => {
@@ -532,6 +551,7 @@ export default {
             xhr.send(file)
           })
 
+          uploadSizeInfo.value = ''
           currentStep.value = 2
           processingStatus.value = `第 ${current}/${total} 个文件上传成功，正在处理... [${endpoint}]`
 
@@ -569,18 +589,23 @@ export default {
             const result = await res.json()
             
             if (result.status === 'completed') {
+              uploadProgress.value = 100
+              uploadSizeInfo.value = ''
               showProcessingModal.value = false
               resolve()
               return
             }
-            
+
             if (result.status === 'failed') {
               showProcessingModal.value = false
               reject(new Error(result.message || '处理失败'))
               return
             }
 
-            uploadProgress.value = result.progress
+            // 后端 progress 是 0-100，将其映射到 60-100 区间：progress * 0.4 + 60
+            // 并且保证不会回退（刚完成上传 60%，后端第一次返回 10% 时仍保持 60%)
+            const mapped = Math.round(60 + (result.progress || 0) * 0.4)
+            if (mapped > uploadProgress.value) uploadProgress.value = mapped
             processingStatus.value = result.message
 
             const stepMap = {
@@ -885,6 +910,7 @@ export default {
       fileInput,
       videoPlayer,
       uploadProgress,
+      uploadSizeInfo,
       processingStatus,
       showProcessingModal,
       processingSteps,
@@ -1254,6 +1280,14 @@ export default {
   font-size: 12px;
   color: #666;
   margin-top: 5px;
+}
+
+.progress-text .progress-size {
+  display: block;
+  margin-top: 4px;
+  color: #5b9bd5;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .processing-modal {
