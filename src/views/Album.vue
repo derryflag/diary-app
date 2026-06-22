@@ -139,6 +139,29 @@ export default {
     const currentStep = ref(0)
     const uploadProgress = ref(0)
     const uploadSizeInfo = ref('')
+    const wakeLock = ref(null) // 屏幕常亮锁
+
+    // 申请 Wake Lock（上传期间保持屏幕常亮，避免手机熄屏中断）
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator && navigator.wakeLock && 'request' in navigator.wakeLock) {
+          const lock = await navigator.wakeLock.request('screen')
+          wakeLock.value = lock
+        }
+      } catch (err) {
+        // 浏览器不支持或拒绝，静默失败（不影响正常流程）
+      }
+    }
+
+    // 释放 Wake Lock
+    const releaseWakeLock = async () => {
+      if (wakeLock.value) {
+        try {
+          await wakeLock.value.release()
+        } catch (err) {}
+        wakeLock.value = null
+      }
+    }
     const processingStatus = ref('')
     const images = ref([])
     const showPreview = ref(false)
@@ -462,6 +485,9 @@ export default {
         : ['上传图片', '生成缩略图', '保存记录']
       currentStep.value = 0
 
+      // 申请屏幕常亮，避免手机熄屏中断上传
+      await requestWakeLock()
+
       try {
         if (!isVideo) {
           // Image: upload directly to local server
@@ -481,8 +507,8 @@ export default {
             }
             xhr.upload.addEventListener('progress', (e) => {
               if (e.lengthComputable) {
-                // 图片：上传阶段占 0-60%，后面的后端处理占 60-100%
-                uploadProgress.value = Math.round((e.loaded / e.total) * 60)
+                // 图片：上传阶段占 0-80%，后面的后端处理占 80-100%
+                uploadProgress.value = Math.round((e.loaded / e.total) * 80)
                 uploadSizeInfo.value = formatSize(e.loaded) + ' / ' + formatSize(e.total)
               }
             })
@@ -505,6 +531,11 @@ export default {
 
           if (uploadResult.taskId) {
             await pollTaskStatus(uploadResult.taskId)
+          } else {
+            uploadProgress.value = 100
+            uploadSizeInfo.value = ''
+            showProcessingModal.value = false
+            releaseWakeLock()
           }
         } else {
           // Video: upload to OSS first, then process
@@ -533,8 +564,8 @@ export default {
             const xhr = new XMLHttpRequest()
             xhr.upload.addEventListener('progress', (e) => {
               if (e.lengthComputable) {
-                // 视频：上传阶段占 0-60%，后面的后端处理占 60-100%
-                uploadProgress.value = Math.round((e.loaded / e.total) * 60)
+                // 视频：上传阶段占 0-80%，后面的后端处理占 80-100%
+                uploadProgress.value = Math.round((e.loaded / e.total) * 80)
                 uploadSizeInfo.value = formatSize(e.loaded) + ' / ' + formatSize(e.total)
               }
             })
@@ -578,6 +609,7 @@ export default {
         console.error('上传失败:', err)
         alert(`上传第 ${current} 个文件失败：${err.message}`)
         showProcessingModal.value = false
+        releaseWakeLock()
       }
     }
 
@@ -592,19 +624,21 @@ export default {
               uploadProgress.value = 100
               uploadSizeInfo.value = ''
               showProcessingModal.value = false
+              releaseWakeLock()
               resolve()
               return
             }
 
             if (result.status === 'failed') {
               showProcessingModal.value = false
+              releaseWakeLock()
               reject(new Error(result.message || '处理失败'))
               return
             }
 
-            // 后端 progress 是 0-100，将其映射到 60-100 区间：progress * 0.4 + 60
-            // 并且保证不会回退（刚完成上传 60%，后端第一次返回 10% 时仍保持 60%)
-            const mapped = Math.round(60 + (result.progress || 0) * 0.4)
+            // 后端 progress 是 0-100，将其映射到 80-100 区间：progress * 0.2 + 80
+            // 并且保证不会回退（刚完成上传 80%，后端第一次返回 10% 时仍保持 80%)
+            const mapped = Math.round(80 + (result.progress || 0) * 0.2)
             if (mapped > uploadProgress.value) uploadProgress.value = mapped
             processingStatus.value = result.message
 
@@ -683,10 +717,17 @@ export default {
 
     onMounted(() => {
       setupListeners()
+      // 页面切到后台时 Wake Lock 会被系统自动释放，重新可见时重新申请
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && showProcessingModal.value) {
+          requestWakeLock()
+        }
+      })
     })
 
     onUnmounted(() => {
       removeListeners()
+      releaseWakeLock()
     })
 
     const onTouchStart = (e) => {
