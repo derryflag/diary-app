@@ -140,26 +140,77 @@ export default {
     const uploadProgress = ref(0)
     const uploadSizeInfo = ref('')
     const wakeLock = ref(null) // 屏幕常亮锁
+    const keepAliveVideo = ref(null) // 降级方案：隐藏的静音循环视频元素
 
     // 申请 Wake Lock（上传期间保持屏幕常亮，避免手机熄屏中断）
+    // Android Chrome 84+ / iOS Safari 16.4+ 原生支持
     const requestWakeLock = async () => {
+      let success = false
       try {
         if ('wakeLock' in navigator && navigator.wakeLock && 'request' in navigator.wakeLock) {
           const lock = await navigator.wakeLock.request('screen')
           wakeLock.value = lock
+          console.log('[WakeLock] 申请成功 ✓')
+          lock.addEventListener('release', () => {
+            console.log('[WakeLock] 已释放')
+          })
+          success = true
+        } else {
+          console.log('[WakeLock] 浏览器不支持 navigator.wakeLock')
         }
       } catch (err) {
-        // 浏览器不支持或拒绝，静默失败（不影响正常流程）
+        // 浏览器不支持、或在无用户交互/非 https/后台标签页 等场景会拒绝
+        // 打印原因到控制台，方便排查；不影响正常上传
+        console.warn('[WakeLock] 申请失败:', err.name, err.message)
       }
+
+      if (success) return true
+
+      // ========== 降级方案：隐藏的静音循环视频 ==========
+      // 当浏览器在播放视频时，往往不会熄屏。此方式兼容性更广
+      try {
+        let video = keepAliveVideo.value
+        if (!video) {
+          video = document.createElement('video')
+          video.muted = true
+          video.playsInline = true
+          video.loop = true
+          video.preload = 'auto'
+          // 使用一个极简的 1x1 黑帧 WebM 视频 (约 200 字节)，避免真实下载
+          video.src = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAxq+BAhtbWVyZ2V/5KBAg=='
+          video.style.position = 'fixed'
+          video.style.left = '-1000px'
+          video.style.top = '-1000px'
+          video.style.width = '1px'
+          video.style.height = '1px'
+          video.style.opacity = '0'
+          video.style.pointerEvents = 'none'
+          document.body.appendChild(video)
+          keepAliveVideo.value = video
+        }
+        const p = video.play()
+        if (p && p.then) {
+          p.then(() => console.log('[WakeLock] 降级视频方案已启动'))
+            .catch((e) => console.warn('[WakeLock] 降级视频方案也失败:', e.name, e.message))
+        }
+      } catch (err) {
+        console.warn('[WakeLock] 降级方案异常:', err.name, err.message)
+      }
+      return false
     }
 
-    // 释放 Wake Lock
+    // 释放 Wake Lock + 降级视频
     const releaseWakeLock = async () => {
       if (wakeLock.value) {
-        try {
-          await wakeLock.value.release()
-        } catch (err) {}
+        try { await wakeLock.value.release() } catch (err) {}
         wakeLock.value = null
+      }
+      if (keepAliveVideo.value) {
+        try {
+          keepAliveVideo.value.pause()
+          keepAliveVideo.value.removeAttribute('src')
+          keepAliveVideo.value.load()
+        } catch (err) {}
       }
     }
     const processingStatus = ref('')
