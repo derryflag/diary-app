@@ -6,6 +6,7 @@ import sharp from 'sharp'
 import ffmpeg from 'fluent-ffmpeg'
 import { v4 as uuidv4 } from 'uuid'
 import { fileURLToPath } from 'url'
+import exifr from 'exifr'
 import ossClient, { ossConfig, publicClient } from '../oss.js'
 import db from '../db.js'
 import { authMiddleware } from '../middleware/auth.js'
@@ -26,9 +27,20 @@ const VIDEO_TYPES = ['.mp4', '.mov', '.avi', '.mkv', '.webm']
 
 const processingTasks = new Map()
 
+const looksLikeValidDate = (yyyymmdd) => {
+  if (!/^\d{8}$/.test(yyyymmdd)) return false
+  const year = parseInt(yyyymmdd.slice(0, 4), 10)
+  const month = parseInt(yyyymmdd.slice(4, 6), 10)
+  const day = parseInt(yyyymmdd.slice(6, 8), 10)
+  if (year < 1990 || year > 2100) return false
+  if (month < 1 || month > 12) return false
+  if (day < 1 || day > 31) return false
+  return true
+}
+
 const getDateDir = (filename) => {
   const match = filename.match(/^(?:IMG|VID)[_-](\d{8})/i)
-  if (match) return match[1]
+  if (match && looksLikeValidDate(match[1])) return match[1]
   const mmexportMatch = filename.match(/mmexport(\d{13})/i)
   if (mmexportMatch) {
     const timestamp = parseInt(mmexportMatch[1])
@@ -36,7 +48,7 @@ const getDateDir = (filename) => {
     return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`
   }
   const digits = filename.match(/(\d{8})/)
-  if (digits) return digits[1]
+  if (digits && looksLikeValidDate(digits[1])) return digits[1]
   const now = new Date()
   return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
 }
@@ -44,6 +56,178 @@ const getDateDir = (filename) => {
 const isVideoFile = (filename) => {
   const ext = path.extname(filename).toLowerCase()
   return VIDEO_TYPES.includes(ext)
+}
+
+// 从图片 EXIF 中提取拍摄时间，失败时返回 null
+// 图片格式才调用此函数，视频请勿调用
+const getDateDirFromExif = async (filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) return null
+    const stats = fs.statSync(filePath)
+    if (stats.size === 0) return null
+
+    const exif = await exifr.parse(filePath, { tz: true }).catch(() => null)
+    if (!exif) return null
+
+    const date = exif.DateTimeOriginal || exif.DateTime || exif.CreateDate || exif.DateTimeDigitized
+    if (!(date instanceof Date) || isNaN(date.getTime())) return null
+
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    if (y < 1990 || y > 2100) return null
+    return `${y}${m}${d}`
+  } catch (err) {
+    return null
+  }
+}
+
+// MP4 / MOV 的 mvhd.creation_time 解析（无需外部依赖）
+// 文件结构：一系列 "box"，每个 box = 4字节size + 4字节type + body
+// moov > mvhd 里有 creation_time（自 1904-01-01 起的秒数，通常是 32 位，部分文件是 64 位）
+const getDateDirFromMp4 = async (filePath) => {
+  // seconds between 1904-01-01 UTC and 1970-01-01 UTC
+  const MAC_EPOCH_DIFF = 2082844800n
+
+  const findBox = (buf, offset, end, wantedType) => {
+    let p = offset
+    while (p + 8 <= end) {
+      const size = buf.readUInt32BE(p)
+      const type = buf.slice(p + 4, p + 8).toString('ascii')
+      let headerSize = 8
+      let bodySize = size
+      if (size === 1) {
+        if (p + 16 > end) return null
+        bodySize = Number(buf.readBigUInt64BE(p + 8))
+        headerSize = 16
+      } else if (size < 8) {
+        return null
+      }
+      if (bodySize < 8) return null
+      const next = p + bodySize
+      if (next > end) return null
+      if (type === wantedType) return { start: p, bodyStart: p + headerSize, end: next }
+      p = next
+    }
+    return null
+  }
+
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return null
+    const stat = fs.statSync(filePath)
+    if (stat.size < 32) return null
+
+    // moov 几乎总是在文件头部 1MB 以内（ftyp/moov/mdat 的标准布局）
+    // 先读前 1MB；若还找不到 moov，再读文件末尾 1MB（少数编码器把 moov 放文件尾部）
+    const HEAD_LIMIT = 1 * 1024 * 1024
+    const TAIL_LIMIT = 1 * 1024 * 1024
+    const READ_LIMIT = Math.min(stat.size, HEAD_LIMIT)
+    const fd = fs.openSync(filePath, 'r')
+    try {
+      const buf = Buffer.alloc(READ_LIMIT)
+      const bytesRead = fs.readSync(fd, buf, 0, READ_LIMIT, 0)
+
+      // moov 可能在文件头部也可能在尾部。
+      // 找到 moov 后必须同步记录它在哪个 buffer 里，否则后续在 moov 内找 mvhd 时会访问错误的 buffer。
+      let activeBuf = buf
+      let moov = findBox(activeBuf, 0, bytesRead, 'moov')
+      if (!moov && stat.size > READ_LIMIT) {
+        const tailSize = Math.min(stat.size, TAIL_LIMIT)
+        const tailOffset = stat.size - tailSize
+        const tailBuf = Buffer.alloc(tailSize)
+        const tailRead = fs.readSync(fd, tailBuf, 0, tailSize, tailOffset)
+        moov = findBox(tailBuf, 0, tailRead, 'moov')
+        if (moov) activeBuf = tailBuf
+      }
+      if (!moov) return null
+
+      // 在 moov 所在的 buffer 里继续找 mvhd
+      const mvhd = findBox(activeBuf, moov.bodyStart, moov.end, 'mvhd')
+      if (!mvhd) return null
+
+      // mvhd body: version(1) + flags(3) + creation_time(4 或 version==1 时 8)
+      const p = mvhd.bodyStart
+      if (p + 20 > mvhd.end) return null
+      const version = activeBuf.readUInt8(p)
+      let creationSec
+      if (version === 1) {
+        if (p + 28 > mvhd.end) return null
+        creationSec = activeBuf.readBigUInt64BE(p + 4)
+      } else {
+        creationSec = BigInt(activeBuf.readUInt32BE(p + 4))
+      }
+
+      // 转成 unix 秒数，再构造 Date
+      if (creationSec <= MAC_EPOCH_DIFF) return null
+      const unixMs = Number(creationSec - MAC_EPOCH_DIFF) * 1000
+      const date = new Date(unixMs)
+      if (isNaN(date.getTime())) return null
+
+      const y = date.getUTCFullYear()
+      const m = String(date.getUTCMonth() + 1).padStart(2, '0')
+      const d = String(date.getUTCDate()).padStart(2, '0')
+      if (y < 1990 || y > 2100) return null
+      return `${y}${m}${d}`
+    } finally {
+      fs.closeSync(fd)
+    }
+  } catch (err) {
+    return null
+  }
+}
+
+// 综合推断日期
+//   图片：EXIF > 文件名 > mtime > 今天
+//   视频：MP4/MOV mvhd > 文件名 > mtime > 今天
+// 说明：手机上传的文件 mtime 永远是"上传瞬间"，不能反映拍摄时间，故放最后兜底
+const resolveDateDir = async (filePath, originalName, isVideo) => {
+  const name = originalName || (filePath ? path.basename(filePath) : '')
+  const kind = isVideo ? '视频' : '图片'
+  const logLines = [`[日期推断] ${name} (${kind})`]
+
+  let result = null
+  if (filePath) {
+    if (isVideo) {
+      const fromMp4 = await getDateDirFromMp4(filePath)
+      logLines.push(`  MP4/mvhd: ${fromMp4 || '无'}`)
+      if (fromMp4) result = fromMp4
+    } else {
+      const fromExif = await getDateDirFromExif(filePath)
+      logLines.push(`  EXIF: ${fromExif || '无'}`)
+      if (fromExif) result = fromExif
+    }
+  }
+
+  if (!result) {
+    const fromName = getDateDir(name)
+    logLines.push(`  文件名: ${fromName}`)
+    if (fromName && /^\d{8}$/.test(fromName)) {
+      const y = parseInt(fromName.slice(0, 4), 10)
+      if (y >= 1990 && y <= 2100) result = fromName
+    }
+  }
+
+  if (!result && filePath && fs.existsSync(filePath)) {
+    try {
+      const mtime = fs.statSync(filePath).mtime
+      const y = mtime.getFullYear()
+      if (y >= 1990 && y <= 2100) {
+        result = `${y}${String(mtime.getMonth() + 1).padStart(2, '0')}${String(mtime.getDate()).padStart(2, '0')}`
+        logLines.push(`  mtime: ${result}`)
+      }
+    } catch (_) {}
+  }
+
+  if (!result) {
+    const now = new Date()
+    result = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
+    logLines.push(`  兜底(今天): ${result}`)
+  } else {
+    logLines.push(`  → 最终采用: ${result}`)
+  }
+
+  console.log(logLines.join('\n'))
+  return result
 }
 
 // Map DB row to frontend-expected format
@@ -128,12 +312,19 @@ router.post('/api/oss/sign', authMiddleware, async (req, res) => {
     const ossDataDir = ossConfig.dataDir
 
     const ossPath = `${ossDataDir}/${mediaType === 'video' ? 'video' : 'thumbnail'}/${dateDir}/${filename}`
+    // 前端上传是走公网 OSS 的签名 URL
     const url = publicClient.signatureUrl(ossPath, {
       method: 'PUT',
       expires: 300,
       contentType,
       'Content-Type': contentType
     })
+
+    console.log(
+      `[OSS签名] 文件=${filename}(${fileSize ? (fileSize / 1024 / 1024).toFixed(2) + ' MB' : '?'}), ` +
+      `endpoint=公网(${ossConfig.publicEndpoint}), ` +
+      `ossPath=${ossPath}`
+    )
 
     res.json({
       success: true,
@@ -152,20 +343,17 @@ router.post('/api/oss/sign', authMiddleware, async (req, res) => {
 })
 
 // Local file upload
+// 先把文件存到临时目录，随后在异步处理时基于 EXIF/文件名推断真实的 dateDir 再移动
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase()
-    const dateDir = getDateDir(file.originalname)
-    const isVid = isVideoFile(file.originalname)
-    const baseDir = isVid ? VIDEO_DIR : IMAGE_DIR
-    const targetDir = path.join(baseDir, dateDir)
-    if (!fs.existsSync(targetDir)) {
-      fs.mkdirSync(targetDir, { recursive: true })
+    if (!fs.existsSync(PROCESSING_DIR)) {
+      fs.mkdirSync(PROCESSING_DIR, { recursive: true })
     }
-    cb(null, targetDir)
+    cb(null, PROCESSING_DIR)
   },
   filename: (req, file, cb) => {
-    cb(null, file.originalname)
+    const safeName = `${uuidv4()}_${file.originalname.replace(/[^\w.\-+]+/g, '_')}`
+    cb(null, safeName)
   }
 })
 
@@ -192,7 +380,6 @@ router.post('/api/album/upload', authMiddleware, upload.single('file'), async (r
     }
 
     const taskId = uuidv4()
-    const dateDir = getDateDir(file.originalname)
     const isVid = isVideoFile(file.originalname)
 
     processingTasks.set(taskId, {
@@ -202,12 +389,12 @@ router.post('/api/album/upload', authMiddleware, upload.single('file'), async (r
       message: '正在处理...',
       filePath: file.path,
       originalName: file.originalname,
-      dateDir,
       mediaType: isVid ? 'video' : 'image',
       createdAt: new Date().toISOString()
     })
 
-    processMediaAsync(taskId, file.path, file.originalname, dateDir, isVid).catch(err => {
+    // dateDir 传 null，让 processMediaAsync 内部基于 EXIF/文件修改时间推断
+    processMediaAsync(taskId, file.path, file.originalname, null, isVid).catch(err => {
       console.error(`异步处理任务 ${taskId} 失败:`, err)
       const task = processingTasks.get(taskId)
       if (task) {
@@ -298,6 +485,13 @@ const processMediaAsync = async (taskId, filePath, originalName, dateDir, isVid)
   const ext = path.extname(originalName).toLowerCase()
 
   try {
+    // 若调用方未提供 dateDir，则基于 EXIF/文件时间/文件名推断
+    if (!dateDir) {
+      task.progress = 5
+      task.message = '正在读取拍摄时间...'
+      dateDir = await resolveDateDir(filePath, originalName, isVid)
+    }
+
     if (isVid) {
       task.progress = 10
       task.message = '正在生成缩略图...'
@@ -361,7 +555,7 @@ const processMediaAsync = async (taskId, filePath, originalName, dateDir, isVid)
       task.progress = 100
       task.message = '处理完成'
       task.data = newItem
-      console.log(`[${taskId}] 视频处理完成: ${originalName}`)
+      console.log(`[${taskId}] 视频处理完成: ${originalName} → ${dateDir}`)
     } else {
       task.progress = 10
       task.message = '正在生成缩略图...'
@@ -409,7 +603,7 @@ const processMediaAsync = async (taskId, filePath, originalName, dateDir, isVid)
       task.progress = 100
       task.message = '处理完成'
       task.data = newItem
-      console.log(`[${taskId}] 图片处理完成: ${originalName}`)
+      console.log(`[${taskId}] 图片处理完成: ${originalName} → ${dateDir}`)
     }
   } catch (err) {
     console.error(`[${taskId}] 处理失败:`, err)
@@ -437,8 +631,12 @@ const processVideoAsync = async (taskId, ossPath, originalName, dateDir) => {
   try {
     task.progress = 10
     task.message = `正在下载视频... [${ossEndpoint}]`
-    console.log(`[${taskId}] 下载视频: ${ossPath}`)
+    console.log(`[${taskId}] [OSS-下载视频] endpoint=内部(${ossEndpoint}), path=${ossPath}`)
     await ossClient.get(ossPath, downloadPath)
+
+    // 下载后重新基于文件内容推断 dateDir（覆盖前端按文件名猜测的 dateDir，更准确）
+    const resolvedDateDir = await resolveDateDir(downloadPath, originalName, true)
+    if (resolvedDateDir) dateDir = resolvedDateDir
 
     task.progress = 30
     task.message = '正在生成缩略图...'
@@ -454,6 +652,10 @@ const processVideoAsync = async (taskId, ossPath, originalName, dateDir) => {
     task.progress = 40
     task.message = `正在上传缩略图... [${ossEndpoint}]`
     const ossThumbnailPath = `${ossDataDir}/thumbnail/${dateDir}/${thumbFilename}`
+    console.log(
+      `[${taskId}] [OSS-上传缩略图] endpoint=内部(${ossEndpoint}), ` +
+      `path=${ossThumbnailPath}${fs.existsSync(thumbPath) ? ', size=' + (fs.statSync(thumbPath).size / 1024).toFixed(1) + ' KB' : ''}`
+    )
     await ossClient.put(ossThumbnailPath, thumbPath)
     if (fs.existsSync(thumbPath)) {
       fs.unlinkSync(thumbPath)
@@ -468,6 +670,10 @@ const processVideoAsync = async (taskId, ossPath, originalName, dateDir) => {
     task.progress = 80
     task.message = `正在上传压缩视频... [${ossEndpoint}]`
     const ossCompressedPath = `${ossDataDir}/video/${dateDir}/${compressedFilename}`
+    console.log(
+      `[${taskId}] [OSS-上传压缩视频] endpoint=内部(${ossEndpoint}), ` +
+      `path=${ossCompressedPath}${fs.existsSync(compressedPath) ? ', size=' + (fs.statSync(compressedPath).size / 1024 / 1024).toFixed(2) + ' MB' : ''}`
+    )
     await ossClient.put(ossCompressedPath, compressedPath)
     if (fs.existsSync(compressedPath)) {
       fs.unlinkSync(compressedPath)
@@ -550,6 +756,15 @@ const processImageAsync = async (taskId, ossPath, originalName, dateDir) => {
   const downloadPath = path.join(PROCESSING_DIR, originalName)
 
   try {
+    // 先从 OSS 下载原始图片，然后读取 EXIF 来确定拍摄日期
+    task.progress = 5
+    task.message = '正在下载原图...'
+    console.log(`[${taskId}] [OSS-下载图片] endpoint=内部(${ossEndpoint}), path=${ossPath}`)
+    await ossClient.get(ossPath, downloadPath)
+
+    const resolvedDateDir = await resolveDateDir(downloadPath, originalName, false)
+    if (resolvedDateDir) dateDir = resolvedDateDir
+
     task.progress = 10
     task.message = '正在生成缩略图...'
     const prefix = 'IMG_'
@@ -564,6 +779,10 @@ const processImageAsync = async (taskId, ossPath, originalName, dateDir) => {
     task.progress = 40
     task.message = `正在上传缩略图... [${ossEndpoint}]`
     const ossThumbnailPath = `${ossDataDir}/thumbnail/${dateDir}/${thumbFilename}`
+    console.log(
+      `[${taskId}] [OSS-上传缩略图] endpoint=内部(${ossEndpoint}), ` +
+      `path=${ossThumbnailPath}${fs.existsSync(thumbPath) ? ', size=' + (fs.statSync(thumbPath).size / 1024).toFixed(1) + ' KB' : ''}`
+    )
     await ossClient.put(ossThumbnailPath, thumbPath)
     if (fs.existsSync(thumbPath)) {
       fs.unlinkSync(thumbPath)
@@ -648,6 +867,7 @@ router.delete('/api/album/:id', authMiddleware, async (req, res) => {
     const ossFilesToDelete = [item.oss_path, item.oss_compressed_path, item.oss_thumbnail_path].filter(Boolean)
     for (const ossPath of ossFilesToDelete) {
       try {
+        console.log(`[OSS-删除] endpoint=内部(${ossConfig.endpoint}), path=${ossPath}`)
         await ossClient.delete(ossPath)
         console.log(`已删除 OSS 文件：${ossPath}`)
       } catch (err) {
@@ -670,6 +890,7 @@ router.delete('/api/album/:id', authMiddleware, async (req, res) => {
 
     if (item.oss_path) {
       try {
+        console.log(`[OSS-删除] endpoint=内部(${ossConfig.endpoint}), path=${item.oss_path}`)
         await ossClient.delete(item.oss_path)
         console.log(`已删除 OSS 原图：${item.oss_path}`)
       } catch (err) {
@@ -678,6 +899,7 @@ router.delete('/api/album/:id', authMiddleware, async (req, res) => {
     }
     if (item.oss_thumbnail_path) {
       try {
+        console.log(`[OSS-删除] endpoint=内部(${ossConfig.endpoint}), path=${item.oss_thumbnail_path}`)
         await ossClient.delete(item.oss_thumbnail_path)
         console.log(`已删除 OSS 缩略图：${item.oss_thumbnail_path}`)
       } catch (err) {
