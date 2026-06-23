@@ -10,6 +10,7 @@ import exifr from 'exifr'
 import ossClient, { ossConfig, publicClient } from '../oss.js'
 import db from '../db.js'
 import { authMiddleware } from '../middleware/auth.js'
+import { extractDateFromFilename } from '../../shared/date-utils.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -27,28 +28,13 @@ const VIDEO_TYPES = ['.mp4', '.mov', '.avi', '.mkv', '.webm']
 
 const processingTasks = new Map()
 
-const looksLikeValidDate = (yyyymmdd) => {
-  if (!/^\d{8}$/.test(yyyymmdd)) return false
-  const year = parseInt(yyyymmdd.slice(0, 4), 10)
-  const month = parseInt(yyyymmdd.slice(4, 6), 10)
-  const day = parseInt(yyyymmdd.slice(6, 8), 10)
-  if (year < 1990 || year > 2100) return false
-  if (month < 1 || month > 12) return false
-  if (day < 1 || day > 31) return false
-  return true
-}
-
 const getDateDir = (filename) => {
-  const match = filename.match(/^(?:IMG|VID)[_-](\d{8})/i)
-  if (match && looksLikeValidDate(match[1])) return match[1]
-  const mmexportMatch = filename.match(/mmexport(\d{13})/i)
-  if (mmexportMatch) {
-    const timestamp = parseInt(mmexportMatch[1])
-    const date = new Date(timestamp)
-    return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`
-  }
-  const digits = filename.match(/(\d{8})/)
-  if (digits && looksLikeValidDate(digits[1])) return digits[1]
+  // 统一调 extractDateFromFilename 提取日期
+  // 注意：这里不再做合法性预校验（extractDateFromFilename 内部已处理）
+  // 仅做一个范围检查（1990-2100），避免向 OSS 写入非法路径
+  const result = extractDateFromFilename(filename)
+  const y = parseInt(result.slice(0, 4), 10)
+  if (y >= 1990 && y <= 2100) return result
   const now = new Date()
   return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
 }

@@ -128,6 +128,7 @@
 
 <script>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { extractDateFromFilename } from '../../shared/date-utils.js'
 
 export default {
   name: 'Album',
@@ -491,30 +492,9 @@ export default {
       }
     }
 
-    const extractDateDir = (filename) => {
-      const looksLikeValidDate = (yyyymmdd) => {
-        if (!/^\d{8}$/.test(yyyymmdd)) return false
-        const year = parseInt(yyyymmdd.slice(0, 4), 10)
-        const month = parseInt(yyyymmdd.slice(4, 6), 10)
-        const day = parseInt(yyyymmdd.slice(6, 8), 10)
-        if (year < 1990 || year > 2100) return false
-        if (month < 1 || month > 12) return false
-        if (day < 1 || day > 31) return false
-        return true
-      }
-      const match = filename.match(/^(?:IMG|VID)[_-](\d{8})/i)
-      if (match && looksLikeValidDate(match[1])) return match[1]
-      const mmexportMatch = filename.match(/mmexport(\d{13})/i)
-      if (mmexportMatch) {
-        const timestamp = parseInt(mmexportMatch[1])
-        const date = new Date(timestamp)
-        return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`
-      }
-      const digits = filename.match(/(\d{8})/)
-      if (digits && looksLikeValidDate(digits[1])) return digits[1]
-      const now = new Date()
-      return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`
-    }
+    // 日期提取统一走后端同款的 shared/date-utils.js
+    // 不再依赖 VID/IMG/mmexport 等前缀，改为按日期特征/13位时间戳特征匹配
+    const extractDateDir = (filename) => extractDateFromFilename(filename)
 
     const uploadFileToOSS = async (file, current, total) => {
       const isVideo = file.type.startsWith('video/')
