@@ -395,13 +395,10 @@ export default {
       
       const targetIndex = allGroups.value.indexOf(targetGroup)
       
-      const groupsBefore = Math.min(INITIAL_LOAD, targetIndex)
-      const start = targetIndex - groupsBefore
-      const end = targetIndex + INITIAL_LOAD + 1
-      const neededGroups = allGroups.value.slice(start, end)
-      
-      displayedGroups.value = neededGroups
-      hasMore.value = end < allGroups.value.length
+      // 跳转时直接全量渲染，避免窗口切片丢失"更新"的日期组
+      // 导致上滑看不到更晚时间的照片
+      displayedGroups.value = allGroups.value
+      hasMore.value = false
       flattenedImages.value = displayedGroups.value.flatMap(g => g.images)
       
       highlightedGroup.value = targetGroup.dateKey
